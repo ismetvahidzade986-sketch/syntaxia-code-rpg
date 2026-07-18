@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Syntaxia -- Learn JavaScript by Spellcasting</title>
+<meta name="description" content="Syntaxia is a free, zero-dependency browser RPG that teaches real JavaScript through quests on a fantasy skill tree.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230b0d1a' stroke='%236fe3a6' stroke-width='3'/%3E%3Ctext x='32' y='42' font-size='30' text-anchor='middle' fill='%236fe3a6' font-family='monospace'%3ES%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="starfield" aria-hidden="true"></div>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<header class="topbar">
+  <div class="topbar-brand">
+    <svg class="brand-logo" viewBox="0 0 64 64" role="img" aria-label="Syntaxia logo">
+      <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2.5"></circle>
+      <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5"></circle>
+      <text x="32" y="41" text-anchor="middle" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="24" fill="currentColor">S</text>
+    </svg>
+    <span class="brand-name">Syntaxia</span>
+  </div>
+  <div class="topbar-status" aria-live="polite" aria-atomic="true">
+    <div class="level-chip">
+      <span class="level-chip-num" id="hud-level-num">1</span>
+      <span class="level-chip-title" id="hud-level-title">Novice</span>
+    </div>
+    <div class="xp-bar-wrap" title="Experience">
+      <div class="xp-bar"><div class="xp-bar-fill" id="hud-xp-fill" style="width:0%"></div></div>
+      <span class="xp-text" id="hud-xp-text">0 / 100 XP</span>
+    </div>
+  </div>
+  <nav class="topbar-menu" aria-label="Game menu">
+    <button type="button" id="btn-glossary" class="btn btn-ghost" data-i18n="glossary.title">Glossary</button>
+    <button type="button" id="btn-shortcuts" class="btn btn-ghost" data-i18n="nav.shortcuts">Shortcuts</button>
+    <button type="button" id="btn-about" class="btn btn-ghost" data-i18n="nav.about">About</button>
+    <button type="button" id="btn-reset" class="btn btn-ghost btn-danger" data-i18n="settings.reset_progress">Reset Progress</button>
+    <select id="lang-select" class="lang-select" aria-label="Language"></select>
+  </nav>
+</header>
+
+<main id="main-content" class="app-main">
+
+  <section class="panel panel-character" aria-labelledby="character-heading">
+    <h2 id="character-heading" class="panel-heading" data-i18n="nav.character">Character</h2>
+    <div class="char-avatar-row">
+      <div class="char-avatar" id="char-avatar" aria-hidden="true">🧙</div>
+      <div class="char-id">
+        <div class="char-level" id="char-level-text">Level 1</div>
+        <div class="char-title" id="char-title-text">Novice</div>
+      </div>
+    </div>
+    <div class="char-stat">
+      <div class="char-stat-label">
+        <span data-i18n="char.xp">Experience</span>
+        <span id="char-xp-text">0 / 100</span>
+      </div>
+      <div class="xp-bar"><div class="xp-bar-fill" id="char-xp-fill" style="width:0%"></div></div>
+    </div>
+    <div class="char-stat">
+      <div class="char-stat-label">
+        <span data-i18n="char.mana">Mana</span>
+        <span id="char-mana-text">5 / 5</span>
+      </div>
+      <div class="mana-pips" id="char-mana-pips" role="img" aria-label="Mana"></div>
+    </div>
+    <div class="char-stat">
+      <div class="char-stat-label">
+        <span data-i18n="char.streak">Streak</span>
+        <span id="char-streak-text">0 days</span>
+      </div>
+    </div>
+    <div class="char-achievements">
+      <h3 class="panel-subheading" data-i18n="char.achievements">Achievements</h3>
+      <ul class="achievements-grid" id="achievements-grid"></ul>
+    </div>
+  </section>
+
+  <section class="panel panel-map" aria-labelledby="map-heading">
+    <h2 id="map-heading" class="panel-heading" data-i18n="map.title">Skill Tree</h2>
+    <div class="map-legend">
+      <span class="legend-item"><span class="node-dot node-dot-completed" aria-hidden="true"></span> Completed</span>
+      <span class="legend-item"><span class="node-dot node-dot-available" aria-hidden="true"></span> Available</span>
+      <span class="legend-item"><span class="node-dot node-dot-locked" aria-hidden="true"></span> Locked</span>
+    </div>
+    <div class="map-scroll" id="map-scroll">
+      <div class="map-canvas" id="map-canvas">
+        <svg class="map-lines" id="map-lines"></svg>
+        <div class="map-nodes" id="map-nodes"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel panel-quest" aria-labelledby="quest-heading">
+    <h2 id="quest-heading" class="panel-heading" data-i18n="nav.quest">Quest</h2>
+    <div class="quest-empty" id="quest-empty" data-i18n="quest.empty">Choose a glowing node on the Skill Tree to begin your first quest.</div>
+
+    <div class="quest-content" id="quest-content" hidden>
+      <div class="quest-head">
+        <span class="quest-act-badge" id="quest-act-badge"></span>
+        <h3 class="quest-title" id="quest-title"></h3>
+        <p class="quest-concept" id="quest-concept"></p>
+      </div>
+
+      <div class="quest-lesson" id="quest-lesson"></div>
+
+      <div class="editor-toolbar">
+        <button type="button" id="btn-run" class="btn btn-primary">
+          <span data-i18n="quest.run">Cast Spell</span> <kbd>Ctrl/Cmd+Enter</kbd>
+        </button>
+        <button type="button" id="btn-reset-code" class="btn btn-ghost" data-i18n="quest.reset">Reset Code</button>
+        <button type="button" id="btn-hint" class="btn btn-ghost"><span data-i18n="quest.hint">Hint</span> <span class="mana-cost">(1 mana)</span></button>
+      </div>
+
+      <div class="editor-wrap">
+        <pre class="editor-highlight" id="editor-highlight" aria-hidden="true"><code id="editor-highlight-code"></code></pre>
+        <textarea
+          class="editor-input"
+          id="editor-input"
+          spellcheck="false"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          wrap="off"
+          aria-label="JavaScript code editor"
+        ></textarea>
+      </div>
+
+      <div class="hints-panel" id="hints-panel" aria-live="polite"></div>
+
+      <div class="test-results" id="test-results" aria-live="polite"></div>
+
+      <div class="victory-panel" id="victory-panel" hidden aria-live="polite">
+        <div class="victory-title" data-i18n="quest.victory">Victory!</div>
+        <div class="victory-xp" id="victory-xp"></div>
+        <button type="button" class="btn btn-primary" id="btn-next-quest" data-i18n="quest.next">Next Quest</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="modal-overlay" id="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" id="modal">
+    <button type="button" class="modal-close" id="modal-close" aria-label="Close dialog">&times;</button>
+    <h2 id="modal-title" class="modal-title"></h2>
+    <div id="modal-body" class="modal-body"></div>
+  </div>
+</div>
+
+<div class="levelup-overlay" id="levelup-overlay" hidden aria-live="polite">
+  <div class="levelup-card">
+    <div class="levelup-label" data-i18n="char.levelup">Level Up!</div>
+    <div class="levelup-level" id="levelup-level"></div>
+    <div class="levelup-title" id="levelup-title"></div>
+  </div>
+</div>
+
+<div class="toast-root" id="toast-root" aria-live="polite" aria-atomic="false"></div>
+
+<script src="js/content.js"></script>
+<script src="js/content-extra.js"></script>
+<script src="js/glossary.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/highlight.js"></script>
+<script src="js/lang.js"></script>
+<script src="js/runner.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
