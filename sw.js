@@ -4,7 +4,7 @@
 //
 // Bump CACHE_NAME whenever any precached file changes -- the old cache is
 // deleted on activate, so a stale version can never keep serving old assets.
-const CACHE_NAME = 'syntaxia-cache-v3';
+const CACHE_NAME = 'syntaxia-cache-v4';
 
 const PRECACHE_URLS = [
   './',

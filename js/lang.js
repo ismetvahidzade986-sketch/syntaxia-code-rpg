@@ -112,9 +112,13 @@
         btn.textContent = matched;
         btn.setAttribute('data-term-id', entry.term.id);
         btn.setAttribute('aria-label', matched + ' — ' + t('glossary.title', 'Glossary'));
+        // Read the term from the button itself, not the loop-scoped `entry`/`btn`
+        // vars: a text node with several terms would otherwise make every button
+        // point at the last one (the classic var-in-a-loop closure bug).
         btn.addEventListener('click', function (ev) {
           ev.stopPropagation();
-          showPopover(btn, entry.term.id);
+          var b = ev.currentTarget;
+          showPopover(b, b.getAttribute('data-term-id'));
         });
         node.parentNode.insertBefore(btn, after);
         node = after;
