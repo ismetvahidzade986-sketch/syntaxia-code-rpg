@@ -30,7 +30,13 @@
     return (meta && meta.dir) === 'rtl' ? 'rtl' : 'ltr';
   }
 
+  // Thin hooks so the game/achievement layer can hear about language layer
+  // events without this module needing to know game state exists at all.
+  var beforeSwitchHook = null;
+  var termOpenHook = null;
+
   function setLanguage(code) {
+    if (beforeSwitchHook) { try { beforeSwitchHook(code); } catch (e) {} }
     try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
     location.reload();
   }
@@ -131,6 +137,7 @@
     closePopover();
     var term = byId[termId];
     if (!term) return;
+    if (termOpenHook) { try { termOpenHook(termId); } catch (e) {} }
 
     popover = document.createElement('div');
     popover.className = 'gloss-popover';
@@ -209,6 +216,8 @@
     decorateGlossary: decorate,
     showTermPopover: showPopover,
     allTerms: allTerms,
-    closePopover: closePopover
+    closePopover: closePopover,
+    onTermOpen: function (fn) { termOpenHook = fn; },
+    onBeforeLanguageSwitch: function (fn) { beforeSwitchHook = fn; }
   };
 })();

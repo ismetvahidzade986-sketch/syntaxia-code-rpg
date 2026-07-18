@@ -12,6 +12,8 @@
   var currentQuestId = null;
   var questRunMeta = {};
   var runInFlight = false;
+  var updateMapScrollShadow = null;
+  var updateModalScrollShadow = null;
 
   var dom = {};
 
@@ -21,8 +23,10 @@
       'btn-shortcuts', 'btn-about', 'btn-reset',
       'char-avatar', 'char-level-text', 'char-title-text',
       'char-xp-text', 'char-xp-fill', 'char-mana-text', 'char-mana-pips',
-      'char-streak-text', 'achievements-grid',
-      'map-scroll', 'map-canvas', 'map-lines', 'map-nodes',
+      'char-streak-text',
+      'ach-summary-points', 'ach-summary-count', 'ach-summary-recent',
+      'btn-view-achievements', 'char-stats-block', 'btn-hall-of-deeds',
+      'map-scroll', 'map-canvas', 'map-lanes', 'map-lines', 'map-nodes',
       'quest-empty', 'quest-content', 'quest-act-badge', 'quest-title', 'quest-concept', 'quest-lesson',
       'quest-stepper', 'stepper-step-title', 'stepper-progress', 'stepper-body', 'stepper-dots',
       'btn-step-back', 'btn-step-continue',
@@ -31,7 +35,7 @@
       'btn-review-lesson', 'quest-workspace',
       'btn-run', 'btn-reset-code', 'btn-hint', 'btn-quest-back',
       'editor-highlight', 'editor-highlight-code', 'editor-input', 'editor-quickkeys',
-      'hints-panel', 'test-results', 'victory-panel', 'victory-xp', 'btn-next-quest',
+      'hints-panel', 'test-results', 'victory-panel', 'victory-xp', 'victory-achievements', 'btn-next-quest',
       'modal-overlay', 'modal', 'modal-close', 'modal-title', 'modal-body',
       'levelup-overlay', 'levelup-level', 'levelup-title',
       'toast-root',
@@ -83,7 +87,35 @@
     });
   }
 
+  // A CSS-only fade trick can't be verified without eyeballing a screenshot,
+  // so the shadow is driven by scroll position instead: toggle two classes
+  // that CSS turns into top/bottom overlays. Returns the updater so callers
+  // can re-run it after content that changes scrollHeight (new modal body,
+  // a re-laid-out map).
+  function wireScrollShadow(el) {
+    if (!el) return null;
+    function update() {
+      var scrollable = el.scrollHeight > el.clientHeight + 1;
+      var atTop = el.scrollTop <= 1;
+      var atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      el.classList.toggle('shadow-top', scrollable && !atTop);
+      el.classList.toggle('shadow-bottom', scrollable && !atBottom);
+    }
+    el.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    update();
+    return update;
+  }
+
   /* ---------- HUD / character ---------- */
+
+  function tt(key, fallback) {
+    return window.SyntaxiaLang ? window.SyntaxiaLang.t(key, fallback) : fallback;
+  }
+
+  function displayTitle(title) {
+    return tt('char.title.' + String(title).toLowerCase(), title);
+  }
 
   var TIER_COLORS = {
     Novice: '#8892b0',
@@ -103,7 +135,7 @@
     var progress = Math.min(1, (state.xp - thisLevelXp) / span);
 
     dom.hudLevelNum.textContent = String(state.level);
-    dom.hudLevelTitle.textContent = title;
+    dom.hudLevelTitle.textContent = displayTitle(title);
     dom.hudXpFill.style.width = (progress * 100).toFixed(1) + '%';
     dom.hudXpText.textContent = state.xp + ' / ' + nextLevelXp + ' XP';
   }
@@ -116,8 +148,8 @@
     var color = TIER_COLORS[title] || TIER_COLORS.Novice;
     dom.charAvatar.style.borderColor = color;
     dom.charAvatar.style.boxShadow = '0 0 14px ' + color;
-    dom.charLevelText.textContent = 'Level ' + state.level;
-    dom.charTitleText.textContent = title;
+    dom.charLevelText.textContent = tt('char.level', 'Level {n}').replace('{n}', state.level);
+    dom.charTitleText.textContent = displayTitle(title);
     dom.charTitleText.style.color = color;
 
     var thisLevelXp = Engine.xpForLevel(state.level);
@@ -136,26 +168,202 @@
     }
 
     var streakCount = state.streak.count || 0;
-    dom.charStreakText.textContent = streakCount + (streakCount === 1 ? ' day' : ' days');
+    dom.charStreakText.textContent = tt('char.streak_days', '{n}-day streak').replace('{n}', streakCount);
 
-    renderAchievements();
+    renderAchievementSummary();
   }
 
-  function renderAchievements() {
-    dom.achievementsGrid.innerHTML = '';
+  /* ---------- Hall of Deeds (achievements) ---------- */
+
+  // Old saves stored the earned marker as an epoch-ms Date.now(); new ones
+  // store an ISO day string (see engine.js). Both need to render as a date.
+  function earnedTimestamp(value) {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      var t = Date.parse(value + 'T00:00:00Z');
+      return isNaN(t) ? 0 : t;
+    }
+    return 0;
+  }
+
+  function formatEarnedDate(value) {
+    var t = earnedTimestamp(value);
+    if (!t) return '';
+    try {
+      return new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (e) {
+      return new Date(t).toISOString().slice(0, 10);
+    }
+  }
+
+  function renderAchievementSummary() {
+    var lang = window.SyntaxiaLang;
     var defs = Engine.getAchievementDefs(content);
-    defs.forEach(function (a) {
-      var earned = !!state.achievements[a.id];
-      var li = document.createElement('li');
-      li.className = 'achievement-badge ' + (earned ? 'earned' : 'locked');
-      li.title = a.name + ': ' + a.desc + (earned ? ' (earned)' : ' (locked)');
-      li.textContent = a.icon;
-      var sr = document.createElement('span');
-      sr.className = 'achievement-sr';
-      sr.textContent = a.name + ', ' + a.desc + (earned ? ', earned' : ', locked');
-      li.appendChild(sr);
-      dom.achievementsGrid.appendChild(li);
+    var summary = Engine.summarizeAchievements(state, content);
+
+    var pointsTpl = lang ? lang.t('hall.points', '{n} points') : '{n} points';
+    dom.achSummaryPoints.textContent = pointsTpl.replace('{n}', String(summary.points));
+
+    var countTpl = lang ? lang.t('hall.earned_of', '{earned} / {total} earned') : '{earned} / {total} earned';
+    dom.achSummaryCount.textContent = countTpl
+      .replace('{earned}', String(summary.earnedCount))
+      .replace('{total}', String(summary.totalCount));
+
+    dom.achSummaryRecent.innerHTML = '';
+    defs.filter(function (d) { return state.achievements[d.id]; })
+      .sort(function (a, b) { return earnedTimestamp(state.achievements[b.id]) - earnedTimestamp(state.achievements[a.id]); })
+      .slice(0, 3)
+      .forEach(function (d) {
+        var span = document.createElement('span');
+        span.className = 'ach-recent-icon';
+        span.setAttribute('aria-hidden', 'true');
+        span.title = d.name;
+        span.textContent = d.icon;
+        dom.achSummaryRecent.appendChild(span);
+      });
+
+    renderCharStats();
+  }
+
+  function renderCharStats() {
+    var lang = window.SyntaxiaLang;
+    function tr(key, fallback) { return lang ? lang.t(key, fallback) : fallback; }
+    var rows = [
+      [tr('char.stat_quests_cleared', 'Quests Cleared'), Object.keys(state.completed).length],
+      [tr('char.stat_no_hint_clears', 'No-Hint Clears'), state.stats.noHintClears || 0],
+      [tr('char.stat_checkpoints_first_try', 'Checkpoints Aced'), state.stats.checkpointFirstTryRight || 0],
+      [tr('char.stat_best_streak', 'Best Streak'), state.stats.bestStreak || 0],
+      [tr('char.stat_total_casts', 'Total Casts'), state.stats.runs || 0]
+    ];
+    dom.charStatsBlock.innerHTML = '';
+    var grid = document.createElement('div');
+    grid.className = 'mini-stats';
+    rows.forEach(function (row) {
+      var tile = document.createElement('div');
+      tile.className = 'mini-stat';
+      var label = document.createElement('span');
+      label.className = 'mini-stat-label';
+      label.textContent = row[0];
+      var value = document.createElement('span');
+      value.className = 'mini-stat-value';
+      value.textContent = String(row[1]);
+      tile.appendChild(label);
+      tile.appendChild(value);
+      grid.appendChild(tile);
     });
+    dom.charStatsBlock.appendChild(grid);
+  }
+
+  function achievementCard(def) {
+    var lang = window.SyntaxiaLang;
+    var earnedVal = state.achievements[def.id];
+    var earned = !!earnedVal;
+    var isSecretHidden = !!def.secret && !earned;
+
+    var card = document.createElement('div');
+    card.className = 'hall-card tier-' + def.tier + ' ' + (earned ? 'earned' : 'locked') + (isSecretHidden ? ' is-secret' : '');
+
+    var icon = document.createElement('div');
+    icon.className = 'hall-card-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = def.icon;
+
+    var body = document.createElement('div');
+    body.className = 'hall-card-body';
+
+    var name = document.createElement('div');
+    name.className = 'hall-card-name';
+    name.textContent = def.name;
+
+    var descText = isSecretHidden ? (lang ? lang.t('hall.secret_desc', '???') : '???') : def.desc;
+    var desc = document.createElement('div');
+    desc.className = 'hall-card-desc';
+    desc.textContent = descText;
+
+    body.appendChild(name);
+    body.appendChild(desc);
+
+    if (earned) {
+      var dateEl = document.createElement('div');
+      dateEl.className = 'hall-card-earned';
+      var dateTpl = lang ? lang.t('hall.earned_on', 'Earned {date}') : 'Earned {date}';
+      dateEl.textContent = dateTpl.replace('{date}', formatEarnedDate(earnedVal));
+      body.appendChild(dateEl);
+    } else if (typeof def.progress === 'function') {
+      var p = def.progress(state, content);
+      if (p && p.target > 0) {
+        var current = Math.max(0, Math.min(p.current, p.target));
+        var wrap = document.createElement('div');
+        wrap.className = 'hall-card-progress';
+        var bar = document.createElement('div');
+        bar.className = 'hall-progress-bar';
+        var fill = document.createElement('div');
+        fill.className = 'hall-progress-fill';
+        fill.style.width = ((current / p.target) * 100).toFixed(1) + '%';
+        bar.appendChild(fill);
+        var text = document.createElement('span');
+        text.className = 'hall-progress-text';
+        text.textContent = current + ' / ' + p.target;
+        wrap.appendChild(bar);
+        wrap.appendChild(text);
+        body.appendChild(wrap);
+      }
+    }
+
+    card.appendChild(icon);
+    card.appendChild(body);
+
+    var sr = document.createElement('span');
+    sr.className = 'sr-only';
+    sr.textContent = def.name + ': ' + descText + (earned ? ', earned' : ', locked');
+    card.appendChild(sr);
+    return card;
+  }
+
+  function buildHallOfDeedsModal() {
+    var lang = window.SyntaxiaLang;
+    var defs = Engine.getAchievementDefs(content);
+    var summary = Engine.summarizeAchievements(state, content);
+    var frag = document.createDocumentFragment();
+
+    var header = document.createElement('div');
+    header.className = 'hall-header';
+    var countEl = document.createElement('span');
+    countEl.className = 'hall-header-count';
+    var countTpl = lang ? lang.t('hall.earned_of', '{earned} / {total} earned') : '{earned} / {total} earned';
+    countEl.textContent = countTpl
+      .replace('{earned}', String(summary.earnedCount))
+      .replace('{total}', String(summary.totalCount));
+    var pointsEl = document.createElement('span');
+    pointsEl.className = 'hall-header-points';
+    var pointsTpl = lang ? lang.t('hall.points', '{n} points') : '{n} points';
+    pointsEl.textContent = pointsTpl.replace('{n}', String(summary.points));
+    header.appendChild(countEl);
+    header.appendChild(pointsEl);
+    frag.appendChild(header);
+
+    Engine.ACHIEVEMENT_CATEGORIES.forEach(function (cat) {
+      var inCat = defs.filter(function (d) { return d.category === cat.id; });
+      if (!inCat.length) return;
+      var section = document.createElement('section');
+      section.className = 'hall-category';
+      var h3 = document.createElement('h3');
+      h3.className = 'hall-category-title';
+      h3.textContent = lang ? lang.t('hall.cat_' + cat.id, cat.name) : cat.name;
+      section.appendChild(h3);
+      var grid = document.createElement('div');
+      grid.className = 'hall-grid';
+      inCat.forEach(function (def) { grid.appendChild(achievementCard(def)); });
+      section.appendChild(grid);
+      frag.appendChild(section);
+    });
+
+    return frag;
+  }
+
+  function openHallOfDeeds() {
+    var lang = window.SyntaxiaLang;
+    openModal(lang ? lang.t('hall.title', 'Hall of Deeds') : 'Hall of Deeds', buildHallOfDeedsModal(), { wide: true });
   }
 
   /* ---------- skill tree map ---------- */
@@ -207,7 +415,7 @@
       var maxRank = ranks.length ? ranks[ranks.length - 1] : 0;
       var laneWidth = LAYOUT.padX * 2 + maxRank * LAYOUT.colW + 60;
       maxWidth = Math.max(maxWidth, laneWidth);
-      actLayouts.push({ act: act, top: yCursor });
+      actLayouts.push({ act: act, top: yCursor, height: laneHeight });
       yCursor += laneHeight + LAYOUT.actGap;
     });
 
@@ -219,6 +427,22 @@
     return act ? act.name : ('Act ' + actId);
   }
 
+  // The node the player is nudged toward next: the first available quest in
+  // the lowest Act that isn't fully cleared yet. null once everything is done.
+  function recommendedQuestId() {
+    var acts = content.acts.slice().sort(function (a, b) { return a.id - b.id; });
+    for (var i = 0; i < acts.length; i++) {
+      var qs = content.quests.filter(function (q) { return q.act === acts[i].id; });
+      var allDone = qs.length > 0 && qs.every(function (q) { return !!state.completed[q.id]; });
+      if (allDone) continue;
+      var avail = qs.filter(function (q) { return Engine.questStatus(content, q, state) === 'available'; });
+      return avail.length ? avail[0].id : null;
+    }
+    return null;
+  }
+
+  var didAutoScrollMap = false;
+
   function renderMap() {
     var layout = computeLayout();
     dom.mapCanvas.style.width = layout.width + 'px';
@@ -228,13 +452,36 @@
     dom.mapLines.setAttribute('viewBox', '0 0 ' + layout.width + ' ' + layout.height);
     dom.mapLines.innerHTML = '';
     dom.mapNodes.innerHTML = '';
+    if (dom.mapLanes) dom.mapLanes.innerHTML = '';
+
+    var recommendedId = recommendedQuestId();
+    var lang = window.SyntaxiaLang;
+    var progressTpl = lang ? lang.t('map.act_progress', '{done} / {total}') : '{done} / {total}';
 
     layout.acts.forEach(function (a) {
+      var qs = content.quests.filter(function (q) { return q.act === a.act.id; });
+      var doneCount = qs.filter(function (q) { return !!state.completed[q.id]; }).length;
+      var isDone = qs.length > 0 && doneCount === qs.length;
+
+      if (dom.mapLanes) {
+        var band = document.createElement('div');
+        band.className = 'act-lane-band' + (isDone ? ' act-lane-band-done' : '');
+        band.style.top = a.top + 'px';
+        band.style.height = a.height + 'px';
+        dom.mapLanes.appendChild(band);
+      }
+
       var label = document.createElement('div');
-      label.className = 'act-lane-label';
+      label.className = 'act-lane-label' + (isDone ? ' act-lane-done' : '');
       label.style.left = '14px';
       label.style.top = a.top + 'px';
-      label.textContent = 'Act ' + a.act.id + ' — ' + a.act.name;
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent = 'Act ' + a.act.id + ' — ' + a.act.name;
+      var progressSpan = document.createElement('span');
+      progressSpan.className = 'act-lane-progress';
+      progressSpan.textContent = ' ' + progressTpl.replace('{done}', String(doneCount)).replace('{total}', String(qs.length));
+      label.appendChild(nameSpan);
+      label.appendChild(progressSpan);
       dom.mapNodes.appendChild(label);
     });
 
@@ -261,9 +508,12 @@
       var pos = layout.nodes[q.id];
       if (!pos) return;
       var status = Engine.questStatus(content, q, state);
+      var isRecommended = q.id === recommendedId;
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'map-node status-' + status + (q.id === currentQuestId ? ' is-current' : '');
+      btn.className = 'map-node status-' + status
+        + (q.id === currentQuestId ? ' is-current' : '')
+        + (isRecommended ? ' is-recommended' : '');
       btn.style.left = pos.x + 'px';
       btn.style.top = pos.y + 'px';
       btn.setAttribute('aria-pressed', String(q.id === currentQuestId));
@@ -280,10 +530,26 @@
       btn.appendChild(iconSpan);
       btn.appendChild(labelSpan);
       btn.title = q.title + ' — ' + status;
-      btn.setAttribute('aria-label', q.title + ', ' + status);
+      btn.setAttribute('aria-label', q.title + ', ' + status + (isRecommended ? ', recommended next' : ''));
       btn.addEventListener('click', function () { onNodeClick(q, status); });
       dom.mapNodes.appendChild(btn);
     });
+
+    if (updateMapScrollShadow) updateMapScrollShadow();
+
+    // One-time nudge toward the recommended quest -- set scroll position
+    // directly from the layout coordinates rather than scrollIntoView(),
+    // since the map panel can be display:none (inactive mobile tab) at boot.
+    if (!didAutoScrollMap) {
+      didAutoScrollMap = true;
+      var targetPos = recommendedId ? layout.nodes[recommendedId] : null;
+      if (targetPos && dom.mapScroll) {
+        var vh = dom.mapScroll.clientHeight || 500;
+        var vw = dom.mapScroll.clientWidth || 500;
+        dom.mapScroll.scrollTop = Math.max(0, targetPos.y - vh / 2);
+        dom.mapScroll.scrollLeft = Math.max(0, targetPos.x - vw / 2);
+      }
+    }
   }
 
   function onNodeClick(quest, status) {
@@ -493,6 +759,10 @@
         if (answered) return;
         answered = true;
         var correct = i === cp.answer;
+        var cpRes = Engine.recordCheckpointAnswer(content, state, correct);
+        state = cpRes.state;
+        renderCharacter();
+        cpRes.newlyEarned.forEach(function (id) { showAchievementToast(id); });
         Array.prototype.forEach.call(dom.checkpointChoices.children, function (b, idx) {
           if (idx === cp.answer) b.classList.add('is-correct');
           else if (idx === i) b.classList.add('is-incorrect');
@@ -780,6 +1050,11 @@
     dom.testResults.innerHTML = '';
 
     if (result.timedOut) {
+      var timeoutRun = Engine.recordRun(content, state, quest, false);
+      state = timeoutRun.state;
+      renderCharacter();
+      timeoutRun.newlyEarned.forEach(function (id) { showAchievementToast(id); });
+
       var banner = document.createElement('div');
       banner.className = 'timeout-banner';
       banner.textContent = window.SyntaxiaLang
@@ -853,19 +1128,31 @@
     dom.testResults.appendChild(list);
 
     var passCount = results.filter(function (r) { return r.pass; }).length;
+    var passed = results.length > 0 && passCount === results.length;
     var summary = document.createElement('div');
     summary.className = 'test-summary';
     summary.textContent = passCount + ' / ' + results.length + ' tests passed';
     dom.testResults.appendChild(summary);
 
-    if (results.length > 0 && passCount === results.length) {
+    var runRes = Engine.recordRun(content, state, quest, passed);
+    state = runRes.state;
+    renderCharacter();
+    runRes.newlyEarned.forEach(function (id) { showAchievementToast(id); });
+
+    if (passed) {
       onVictory(quest);
     }
+  }
+
+  function isActFullyComplete(actId) {
+    var qs = content.quests.filter(function (q) { return q.act === actId; });
+    return qs.length > 0 && qs.every(function (q) { return !!state.completed[q.id]; });
   }
 
   function onVictory(quest) {
     var meta = questRunMeta[quest.id] || {};
     var elapsedMs = meta.firstRunAt ? (Date.now() - meta.firstRunAt) : undefined;
+    var actWasIncomplete = !isActFullyComplete(quest.act);
     var res = Engine.completeQuest(content, state, quest, { elapsedMs: elapsedMs });
     state = res.state;
 
@@ -873,6 +1160,7 @@
       ? 'Already cleared — nice replay!'
       : ('+' + quest.xp + ' XP earned');
     dom.victoryPanel.hidden = false;
+    renderVictoryAchievements(res.newlyEarned);
 
     renderHUD();
     renderCharacter();
@@ -881,7 +1169,67 @@
 
     if (res.leveledUp) showLevelUp(res.newLevel);
     res.newlyEarned.forEach(function (id) { showAchievementToast(id); });
+    if (!res.alreadyDone && actWasIncomplete && isActFullyComplete(quest.act)) {
+      showActCompleteToast(actName(quest.act));
+    }
     wireNextQuestButton(quest);
+  }
+
+  // Up to 2 lines under the XP readout: newly-earned achievements first
+  // (flashed EARNED), then the nearest still-locked rung on a ladder this
+  // clear moved the needle on (total clears / no-hint clears / first-try).
+  var VICTORY_PROGRESS_CANDIDATES = [
+    'clears-5', 'clears-15', 'clears-30', 'clears-43',
+    'no-hints', 'no-hint-5', 'no-hint-15', 'no-hint-30',
+    'first-try-5', 'first-try-15', 'first-try-30',
+    'checkpoint-10', 'checkpoint-25', 'glossary-5', 'glossary-25'
+  ];
+
+  function renderVictoryAchievements(newlyEarnedIds) {
+    if (!dom.victoryAchievements) return;
+    dom.victoryAchievements.innerHTML = '';
+    var lang = window.SyntaxiaLang;
+    var defs = Engine.getAchievementDefs(content);
+    var lines = [];
+
+    newlyEarnedIds.forEach(function (id) {
+      if (lines.length >= 2) return;
+      var def = defs.find(function (d) { return d.id === id; });
+      if (def) lines.push({ def: def, earned: true });
+    });
+
+    for (var i = 0; i < VICTORY_PROGRESS_CANDIDATES.length && lines.length < 2; i++) {
+      var candidate = defs.find(function (d) { return d.id === VICTORY_PROGRESS_CANDIDATES[i]; });
+      if (!candidate || state.achievements[candidate.id] || typeof candidate.progress !== 'function') continue;
+      var p = candidate.progress(state, content);
+      if (p && p.current < p.target) lines.push({ def: candidate, earned: false, progress: p });
+    }
+
+    lines.forEach(function (line) {
+      var row = document.createElement('div');
+      row.className = 'victory-ach-line' + (line.earned ? ' is-earned' : '');
+      var icon = document.createElement('span');
+      icon.className = 'victory-ach-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = line.def.icon;
+      var name = document.createElement('span');
+      name.className = 'victory-ach-name';
+      name.textContent = line.def.name;
+      row.appendChild(icon);
+      row.appendChild(name);
+      if (line.earned) {
+        var flash = document.createElement('span');
+        flash.className = 'victory-ach-flash';
+        flash.textContent = lang ? lang.t('victory.ach_earned', 'EARNED') : 'EARNED';
+        row.appendChild(flash);
+      } else {
+        var prog = document.createElement('span');
+        prog.className = 'victory-ach-progress';
+        prog.textContent = Math.min(line.progress.current, line.progress.target) + ' / ' + line.progress.target;
+        row.appendChild(prog);
+      }
+      dom.victoryAchievements.appendChild(row);
+    });
   }
 
   function wireNextQuestButton(justCompleted) {
@@ -907,7 +1255,7 @@
   function onHintClick() {
     var q = questsById[currentQuestId];
     if (!q) return;
-    var res = Engine.useHint(state, q);
+    var res = Engine.useHint(content, state, q);
     if (!res.ok) return;
     state = res.state;
     renderRevealedHints(q);
@@ -917,27 +1265,61 @@
   }
 
   /* ---------- toasts / level-up ---------- */
+  /* Queued so a burst of achievements (one clear can earn several at once)
+     never shows more than TOAST_MAX_VISIBLE at a time -- the rest wait for
+     an earlier one to time out, instead of piling the whole toast-root up. */
 
-  function showToast(message, type) {
+  var TOAST_MAX_VISIBLE = 2;
+  var toastQueue = [];
+  var toastVisibleCount = 0;
+
+  function showToast(message, type, tier) {
+    toastQueue.push({ message: message, type: type, tier: tier });
+    drainToastQueue();
+  }
+
+  function drainToastQueue() {
+    while (toastVisibleCount < TOAST_MAX_VISIBLE && toastQueue.length) {
+      var item = toastQueue.shift();
+      mountToast(item.message, item.type, item.tier);
+    }
+  }
+
+  function mountToast(message, type, tier) {
+    toastVisibleCount++;
     var toast = document.createElement('div');
-    toast.className = 'toast' + (type === 'info' ? ' toast-info' : '');
+    var cls = 'toast';
+    if (type === 'info') cls += ' toast-info';
+    else if (type === 'achievement') cls += ' toast-achievement toast-tier-' + (tier || 'bronze');
+    else if (type === 'act-complete') cls += ' toast-act-complete';
+    toast.className = cls;
     toast.textContent = message;
     dom.toastRoot.appendChild(toast);
     setTimeout(function () {
       if (toast.parentNode) toast.parentNode.removeChild(toast);
+      toastVisibleCount--;
+      drainToastQueue();
     }, 4500);
   }
 
   function showAchievementToast(id) {
     var def = Engine.getAchievementDefs(content).find(function (a) { return a.id === id; });
     if (!def) return;
-    showToast(def.icon + ' Achievement unlocked: ' + def.name + ' — ' + def.desc, 'achievement');
+    var lang = window.SyntaxiaLang;
+    var lead = lang ? lang.t('toast.achievement_unlocked', 'Achievement unlocked') : 'Achievement unlocked';
+    showToast(def.icon + ' ' + lead + ': ' + def.name + ' — ' + def.desc, 'achievement', def.tier);
+  }
+
+  function showActCompleteToast(name) {
+    var lang = window.SyntaxiaLang;
+    var tpl = lang ? lang.t('toast.act_complete', '{name} complete!') : '{name} complete!';
+    showToast(tpl.replace('{name}', name), 'act-complete');
   }
 
   var levelUpTimer = null;
   function showLevelUp(level) {
     dom.levelupLevel.textContent = String(level);
-    dom.levelupTitle.textContent = Engine.titleForLevel(level);
+    dom.levelupTitle.textContent = displayTitle(Engine.titleForLevel(level));
     dom.levelupOverlay.hidden = false;
     clearTimeout(levelUpTimer);
     levelUpTimer = setTimeout(hideLevelUp, 3200);
@@ -952,13 +1334,17 @@
     if (e.key === 'Escape') closeModal();
   }
 
-  function openModal(title, bodyNode) {
+  function openModal(title, bodyNode, opts) {
+    opts = opts || {};
     dom.modalTitle.textContent = title;
     dom.modalBody.innerHTML = '';
     dom.modalBody.appendChild(bodyNode);
+    dom.modal.classList.toggle('modal-wide', !!opts.wide);
     dom.modalOverlay.hidden = false;
     dom.modalClose.focus();
     document.addEventListener('keydown', onModalKeydown);
+    // Wait a frame for the new body to lay out before measuring scrollHeight.
+    if (updateModalScrollShadow) requestAnimationFrame(updateModalScrollShadow);
   }
 
   function closeModal() {
@@ -1020,8 +1406,10 @@
       currentQuestId = null;
       questRunMeta = {};
       stepperState = null;
+      didAutoScrollMap = false;
       dom.questEmpty.hidden = false;
       dom.questContent.hidden = true;
+      dom.victoryAchievements.innerHTML = '';
       renderHUD();
       renderCharacter();
       renderMap();
@@ -1054,6 +1442,8 @@
     dom.btnAbout.addEventListener('click', function () { openModal('About Syntaxia', buildAboutModal()); });
     dom.btnShortcuts.addEventListener('click', function () { openModal('Keyboard Shortcuts', buildShortcutsModal()); });
     dom.btnReset.addEventListener('click', function () { openModal('Reset Progress', buildResetModal()); });
+    if (dom.btnViewAchievements) dom.btnViewAchievements.addEventListener('click', openHallOfDeeds);
+    if (dom.btnHallOfDeeds) dom.btnHallOfDeeds.addEventListener('click', openHallOfDeeds);
     dom.modalClose.addEventListener('click', closeModal);
     dom.modalOverlay.addEventListener('click', function (e) {
       if (e.target === dom.modalOverlay) closeModal();
@@ -1082,6 +1472,24 @@
 
   /* ---------- boot ---------- */
 
+  function wireLangHooks() {
+    var lang = window.SyntaxiaLang;
+    if (!lang || !lang.onTermOpen) return;
+    lang.onTermOpen(function () {
+      var res = Engine.bump(content, state, 'glossaryOpens');
+      state = res.state;
+      renderAchievementSummary();
+      res.newlyEarned.forEach(function (id) { showAchievementToast(id); });
+    });
+    lang.onBeforeLanguageSwitch(function () {
+      // location.reload() follows synchronously right after this fires, so
+      // there's no window to show a toast -- the Polyglot unlock (if any)
+      // simply shows up in the Hall of Deeds after the page comes back.
+      var res = Engine.bump(content, state, 'langSwitches');
+      state = res.state;
+    });
+  }
+
   function init(contentArg) {
     content = contentArg;
     questsById = {};
@@ -1091,13 +1499,26 @@
     state = Engine.load();
     state = Engine.touchStreak(state);
     state = Engine.regenerateMana(state);
+    var bootNewlyEarned = Engine.evaluateAchievements(content, state);
     Engine.save(state);
 
+    updateMapScrollShadow = wireScrollShadow(dom.mapScroll);
+    updateModalScrollShadow = wireScrollShadow(dom.modal);
+
     wireEvents();
+    wireLangHooks();
     activateTab('character');
     renderHUD();
     renderCharacter();
     renderMap();
+
+    if (bootNewlyEarned.length) {
+      // A short delay so a "you kept your streak" achievement doesn't flash
+      // before the page has visually settled.
+      setTimeout(function () {
+        bootNewlyEarned.forEach(function (id) { showAchievementToast(id); });
+      }, 600);
+    }
 
     setInterval(function () {
       state = Engine.regenerateMana(state);

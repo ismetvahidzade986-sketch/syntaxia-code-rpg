@@ -16,6 +16,9 @@
   --success: #58e6a6;
   --fail: #ff7a7a;
   --focus-ring: #c1cbff;
+  --tier-bronze: #d99a5b;
+  --tier-silver: #b8c4de;
+  --tier-gold: #f4cf5e;
   --radius: 10px;
   --tabbar-h: 64px;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -192,6 +195,12 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .xp-bar-fill { transition: none; }
 }
+.xp-text,
+#char-xp-text {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .xp-text {
   font-size: 0.75rem;
   color: var(--text-dim);
@@ -328,6 +337,22 @@ button {
     grid-template-areas: "character map quest";
   }
 }
+/* Wide desktops: give the map lane more room to breathe instead of handing
+   every spare pixel to the quest column, and cap prose width in ch units --
+   that's what actually controls reading line-length, independent of how
+   wide the quest column's grid track ends up. */
+@media (min-width: 1600px) {
+  .app-main {
+    grid-template-columns: 300px 460px minmax(0, 1fr);
+    gap: 1.3rem;
+    padding: 1.3rem;
+  }
+  .panel { padding: 1.25rem; }
+  .quest-lesson, .stepper-body, .quest-concept,
+  .checkpoint-prompt, .checkpoint-explain, .test-results {
+    max-width: 64ch;
+  }
+}
 
 .panel {
   background: rgba(18, 22, 42, 0.72);
@@ -412,40 +437,71 @@ button {
   box-shadow: 0 0 6px rgba(143,163,255,0.8);
 }
 
-.achievements-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
-  gap: 0.4rem;
+/* ---------- character panel: achievement summary + mini stats ---------- */
+.ach-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
 }
-.achievement-badge {
-  width: 42px;
-  height: 42px;
+.ach-summary-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.ach-summary-points {
+  font-weight: 700;
+  color: var(--gold);
+  font-size: 0.95rem;
+}
+.ach-summary-count {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.ach-summary-recent {
+  display: flex;
+  gap: 0.3rem;
+}
+.ach-recent-icon {
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  font-size: 1.05rem;
   background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  position: relative;
+  border: 1px solid var(--gold);
+  box-shadow: 0 0 6px rgba(244,207,94,0.5);
 }
-.achievement-badge.earned {
-  border-color: var(--gold);
-  box-shadow: 0 0 8px rgba(244,207,94,0.6);
+.ach-view-all {
+  margin-left: auto;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.7rem;
 }
-.achievement-badge.locked {
-  filter: grayscale(1);
-  opacity: 0.4;
+
+.mini-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem 0.75rem;
+  margin: 0;
 }
-.achievement-sr {
-  position: absolute;
-  width: 1px; height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.mini-stat-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.mini-stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 /* ---------- map panel ---------- */
@@ -472,6 +528,13 @@ button {
 .node-dot-available { background: var(--success); }
 .node-dot-locked { background: var(--text-faint); }
 
+/* The map is a spatial diagram: keep its coordinate system and initial
+   scroll position LTR in every locale, or RTL opens onto empty canvas. */
+.map-scroll,
+.map-canvas {
+  direction: ltr;
+}
+
 .map-scroll {
   overflow: auto;
   border: 1px solid var(--border-soft);
@@ -482,8 +545,50 @@ button {
 @media (min-width: 860px) {
   .map-scroll { max-height: 620px; }
 }
+
+/* ---------- scroll shadows ---------- */
+/* Driven by JS (wireScrollShadow toggles .shadow-top/.shadow-bottom based on
+   scrollTop, not a CSS-only background-attachment trick) -- that trick needs
+   the container's own background to be a flat matching color to blend into,
+   which .map-scroll/.modal don't have (translucent over the starfield). */
+.map-scroll, .modal {
+  position: relative;
+}
+.map-scroll::before, .map-scroll::after,
+.modal::before, .modal::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 5;
+}
+.map-scroll::before, .modal::before { top: 0; background: linear-gradient(rgba(3,4,10,0.5), transparent); }
+.map-scroll::after, .modal::after { bottom: 0; background: linear-gradient(transparent, rgba(3,4,10,0.5)); }
+.map-scroll.shadow-top::before, .modal.shadow-top::before { opacity: 1; }
+.map-scroll.shadow-bottom::after, .modal.shadow-bottom::after { opacity: 1; }
 .map-canvas {
   position: relative;
+}
+.map-lanes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.act-lane-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 10px;
+}
+.act-lane-band-done {
+  background: linear-gradient(90deg, rgba(244,207,94,0.07), rgba(244,207,94,0.02));
+  border: 1px solid rgba(244,207,94,0.15);
 }
 .map-lines {
   position: absolute;
@@ -501,6 +606,22 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.act-lane-label.act-lane-done {
+  color: var(--gold);
+}
+.act-lane-progress {
+  font-size: 0.68rem;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-faint);
+}
+.act-lane-label.act-lane-done .act-lane-progress {
+  color: var(--gold);
+  opacity: 0.85;
 }
 
 .map-node {
@@ -566,6 +687,23 @@ button {
 .map-node.is-current {
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
+}
+/* The single "go here next" node -- always available (recommendedQuestId()
+   only ever points at one), so this layers on top of the status-available
+   glow. The outline ring itself is static; only the ripple is motion-gated,
+   so the node still reads as distinct with reduced motion on. */
+.map-node.is-recommended {
+  outline: 3px solid var(--accent-strong);
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .map-node.is-recommended {
+    animation: recommend-ring 1.8s ease-in-out infinite;
+  }
+}
+@keyframes recommend-ring {
+  0%, 100% { outline-offset: 3px; outline-color: rgba(193,203,255,0.95); }
+  50% { outline-offset: 8px; outline-color: rgba(193,203,255,0.25); }
 }
 .map-line {
   stroke: var(--border);
@@ -989,6 +1127,47 @@ button {
   margin-bottom: 0.9rem;
   font-size: 0.95rem;
 }
+.victory-achievements:not(:empty) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 0.9rem;
+}
+.victory-ach-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  background: rgba(0,0,0,0.18);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  text-align: left;
+}
+[dir="rtl"] .victory-ach-line { text-align: right; }
+.victory-ach-line.is-earned {
+  border-color: var(--gold);
+  color: var(--text);
+}
+.victory-ach-icon { font-size: 1rem; }
+.victory-ach-name { flex: 1 1 auto; min-width: 0; }
+.victory-ach-flash {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--bg);
+  background: var(--gold);
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.victory-ach-progress {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 
 /* ---------- modal ---------- */
 .modal-overlay {
@@ -1021,6 +1200,7 @@ button {
   position: absolute;
   top: 0.6rem;
   right: 0.75rem;
+  z-index: 6;
   background: none;
   border: none;
   color: var(--text-dim);
@@ -1037,6 +1217,112 @@ button {
   gap: 0.6rem;
   justify-content: flex-end;
   margin-top: 1rem;
+}
+.modal.modal-wide {
+  max-width: 780px;
+}
+
+/* ---------- Hall of Deeds ---------- */
+.hall-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+.hall-header-count {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.hall-header-points {
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.hall-category { margin-bottom: 1.1rem; }
+.hall-category:last-child { margin-bottom: 0; }
+.hall-category-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin: 0 0 0.55rem;
+}
+.hall-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0.6rem;
+}
+.hall-card {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  min-width: 0;
+}
+.hall-card.tier-bronze { border-color: var(--tier-bronze); }
+.hall-card.tier-silver { border-color: var(--tier-silver); }
+.hall-card.tier-gold { border-color: var(--tier-gold); }
+.hall-card.earned.tier-bronze { box-shadow: 0 0 8px rgba(217,154,91,0.45); }
+.hall-card.earned.tier-silver { box-shadow: 0 0 8px rgba(184,196,222,0.4); }
+.hall-card.earned.tier-gold { box-shadow: 0 0 8px rgba(244,207,94,0.5); }
+.hall-card.locked {
+  filter: grayscale(0.6);
+  opacity: 0.62;
+}
+.hall-card-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.hall-card-body { min-width: 0; }
+.hall-card-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+.hall-card-desc {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 0.15rem;
+}
+.hall-card.is-secret .hall-card-desc {
+  font-style: italic;
+  opacity: 0.75;
+}
+.hall-card-earned {
+  font-size: 0.72rem;
+  color: var(--gold);
+  margin-top: 0.35rem;
+}
+.hall-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.hall-progress-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 4px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+  min-width: 40px;
+}
+.hall-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+}
+.hall-progress-text {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  white-space: nowrap;
 }
 
 /* ---------- level up overlay ---------- */
@@ -1138,6 +1424,14 @@ button {
 .toast.toast-info::after {
   background: var(--accent);
 }
+.toast.toast-achievement.toast-tier-bronze { border-color: var(--tier-bronze); }
+.toast.toast-achievement.toast-tier-bronze::after { background: var(--tier-bronze); }
+.toast.toast-achievement.toast-tier-silver { border-color: var(--tier-silver); }
+.toast.toast-achievement.toast-tier-silver::after { background: var(--tier-silver); }
+.toast.toast-achievement.toast-tier-gold { border-color: var(--tier-gold); }
+.toast.toast-achievement.toast-tier-gold::after { background: var(--tier-gold); }
+.toast.toast-act-complete { border-color: var(--success); }
+.toast.toast-act-complete::after { background: var(--success); }
 
 /* ---------- tab bar (mobile app shell) ---------- */
 .tabbar {
@@ -1262,17 +1556,9 @@ button {
     justify-content: center;
   }
 
-  /* ---- achievements: horizontal shelf instead of a big grid ---- */
-  .achievements-grid {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: 0.3rem;
-    scroll-snap-type: x proximity;
-  }
-  .achievement-badge {
-    flex: 0 0 auto;
-    scroll-snap-align: start;
-  }
+  /* ---- achievement summary: view-all drops to its own line instead of
+     fighting the recent-icons row for space on narrow phones ---- */
+  .ach-view-all { margin-left: 0; }
 
   /* ---- toasts float above the tab bar, not over it ---- */
   .toast-root {
@@ -1332,6 +1618,16 @@ button {
 /* Code is always left-to-right, even in RTL locales. */
 .editor-wrap, .editor-input, .editor-highlight,
 pre, code, .gloss-pop-term { direction: ltr; text-align: left; }
+
+/* "3 / 15"-style fraction text: without this, the bidi algorithm can flip
+   the visual order of the two numeric runs in an RTL document (they'd read
+   as "15 / 3") even though the DOM/logical text is correct. Isolating them
+   keeps every achievement/progress count legible in every language. */
+.hall-progress-text, .hall-header-count, .ach-summary-count,
+.act-lane-progress, .victory-ach-progress {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
 
 /* ---------- glossary ---------- */
 

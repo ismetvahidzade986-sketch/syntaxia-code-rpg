@@ -40,6 +40,7 @@
   </button>
   <nav class="topbar-menu" id="topbar-menu" aria-label="Game menu">
     <button type="button" id="btn-glossary" class="btn btn-ghost" data-i18n="glossary.title">Glossary</button>
+    <button type="button" id="btn-hall-of-deeds" class="btn btn-ghost" data-i18n="hall.title">Hall of Deeds</button>
     <button type="button" id="btn-shortcuts" class="btn btn-ghost" data-i18n="nav.shortcuts">Shortcuts</button>
     <button type="button" id="btn-about" class="btn btn-ghost" data-i18n="nav.about">About</button>
     <button type="button" id="btn-reset" class="btn btn-ghost btn-danger" data-i18n="settings.reset_progress">Reset Progress</button>
@@ -95,7 +96,15 @@
     </div>
     <div class="char-achievements">
       <h3 class="panel-subheading" data-i18n="char.achievements">Achievements</h3>
-      <ul class="achievements-grid" id="achievements-grid"></ul>
+      <div class="ach-summary">
+        <div class="ach-summary-main">
+          <span class="ach-summary-points" id="ach-summary-points">0 points</span>
+          <span class="ach-summary-count" id="ach-summary-count">0 / 0 earned</span>
+        </div>
+        <div class="ach-summary-recent" id="ach-summary-recent" aria-hidden="true"></div>
+        <button type="button" class="btn btn-ghost ach-view-all" id="btn-view-achievements" data-i18n="char.view_all">View All</button>
+      </div>
+      <div class="char-stats-block" id="char-stats-block"></div>
     </div>
   </section>
 
@@ -108,6 +117,7 @@
     </div>
     <div class="map-scroll" id="map-scroll">
       <div class="map-canvas" id="map-canvas">
+        <div class="map-lanes" id="map-lanes" aria-hidden="true"></div>
         <svg class="map-lines" id="map-lines"></svg>
         <div class="map-nodes" id="map-nodes"></div>
       </div>
@@ -195,6 +205,7 @@
         <div class="victory-panel" id="victory-panel" hidden aria-live="polite">
           <div class="victory-title" data-i18n="quest.victory">Victory!</div>
           <div class="victory-xp" id="victory-xp"></div>
+          <div class="victory-achievements" id="victory-achievements"></div>
           <button type="button" class="btn btn-primary" id="btn-next-quest" data-i18n="quest.next">Next Quest</button>
         </div>
       </div>
