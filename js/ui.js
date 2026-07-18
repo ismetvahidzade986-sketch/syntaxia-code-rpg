@@ -180,8 +180,15 @@
   function earnedTimestamp(value) {
     if (typeof value === 'number') return value;
     if (typeof value === 'string') {
-      var t = Date.parse(value + 'T00:00:00Z');
-      return isNaN(t) ? 0 : t;
+      // Parse the ISO day as LOCAL midnight; via Date.parse it would be UTC
+      // midnight and render as the previous day west of Greenwich.
+      var parts = value.split('-');
+      if (parts.length === 3) {
+        var t = new Date(+parts[0], +parts[1] - 1, +parts[2]).getTime();
+        return isNaN(t) ? 0 : t;
+      }
+      var fallback = Date.parse(value);
+      return isNaN(fallback) ? 0 : fallback;
     }
     return 0;
   }
