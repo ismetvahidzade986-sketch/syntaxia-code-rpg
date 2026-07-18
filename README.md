@@ -11,8 +11,13 @@ saved locally.
 ## What's inside
 
 - **8 acts, 43 quests** -- variables, control flow, loops, functions, arrays, objects,
-  higher-order functions, and async. Each quest has a short lesson with a worked example,
-  starter code, progressive hints that cost mana, and tests your code has to pass.
+  higher-order functions, and async. Every quest teaches in steps: the idea, a worked example
+  walked through line by line, the classic trap for that concept, then your task broken into
+  numbered sub-goals. Before you code, a quick predict-the-output check makes sure the lesson
+  landed -- and if you guess wrong, it tells you which misconception that guess usually means.
+- **Feedback that coaches** -- test results are a step checklist, and when one fails you get a
+  coach's note about what that failure usually means, not just "expected 15, got undefined".
+  Progressive hints cost mana, so reaching for them is a real choice.
 - **Click any underlined word** -- 107 programming terms have plain-language explanations with
   a small runnable example, right inside the lesson. The full searchable glossary is in the
   top bar too.
@@ -27,6 +32,10 @@ saved locally.
 - **RPG progression** -- XP and a seven-title level ladder (Novice to Runelord), mana that pays
   for hints, daily streaks, achievements, and a skill tree where beating an act's boss opens
   the next act.
+- **Installable, works offline** -- it's a PWA. Add it to your phone's home screen and it opens
+  like an app, works with no connection, and keeps your progress. On phones you get a bottom
+  tab bar, a quick-key row above the editor (Tab, braces, parens -- the keys mobile keyboards
+  don't have), and glossary entries open as a bottom sheet.
 
 ## Why this exists
 

@@ -2,10 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Syntaxia -- Learn JavaScript by Spellcasting</title>
 <meta name="description" content="Syntaxia is a free, zero-dependency browser RPG that teaches real JavaScript through quests on a fantasy skill tree.">
+<meta name="theme-color" content="#0b0d1a">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230b0d1a' stroke='%236fe3a6' stroke-width='3'/%3E%3Ctext x='32' y='42' font-size='30' text-anchor='middle' fill='%236fe3a6' font-family='monospace'%3ES%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -31,7 +34,11 @@
       <span class="xp-text" id="hud-xp-text">0 / 100 XP</span>
     </div>
   </div>
-  <nav class="topbar-menu" aria-label="Game menu">
+  <button type="button" id="btn-menu-toggle" class="btn btn-ghost menu-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="topbar-menu">
+    <span class="menu-toggle-icon" aria-hidden="true">☰</span>
+    <span class="sr-only" data-i18n="nav.menu">Menu</span>
+  </button>
+  <nav class="topbar-menu" id="topbar-menu" aria-label="Game menu">
     <button type="button" id="btn-glossary" class="btn btn-ghost" data-i18n="glossary.title">Glossary</button>
     <button type="button" id="btn-shortcuts" class="btn btn-ghost" data-i18n="nav.shortcuts">Shortcuts</button>
     <button type="button" id="btn-about" class="btn btn-ghost" data-i18n="nav.about">About</button>
@@ -40,9 +47,24 @@
   </nav>
 </header>
 
+<nav class="tabbar" id="tabbar" role="tablist" aria-label="Sections">
+  <button type="button" class="tabbar-btn" id="tab-btn-character" role="tab" aria-selected="true" aria-controls="panel-character" tabindex="0">
+    <span class="tabbar-icon" aria-hidden="true">🧙</span>
+    <span class="tabbar-label" data-i18n="nav.character">Character</span>
+  </button>
+  <button type="button" class="tabbar-btn" id="tab-btn-map" role="tab" aria-selected="false" aria-controls="panel-map" tabindex="-1">
+    <span class="tabbar-icon" aria-hidden="true">🗺️</span>
+    <span class="tabbar-label" data-i18n="map.title">Skill Tree</span>
+  </button>
+  <button type="button" class="tabbar-btn" id="tab-btn-quest" role="tab" aria-selected="false" aria-controls="panel-quest" tabindex="-1">
+    <span class="tabbar-icon" aria-hidden="true">📜</span>
+    <span class="tabbar-label" data-i18n="nav.quest">Quest</span>
+  </button>
+</nav>
+
 <main id="main-content" class="app-main">
 
-  <section class="panel panel-character" aria-labelledby="character-heading">
+  <section class="panel panel-character" id="panel-character" role="tabpanel" aria-labelledby="character-heading">
     <h2 id="character-heading" class="panel-heading" data-i18n="nav.character">Character</h2>
     <div class="char-avatar-row">
       <div class="char-avatar" id="char-avatar" aria-hidden="true">🧙</div>
@@ -77,7 +99,7 @@
     </div>
   </section>
 
-  <section class="panel panel-map" aria-labelledby="map-heading">
+  <section class="panel panel-map" id="panel-map" role="tabpanel" aria-labelledby="map-heading">
     <h2 id="map-heading" class="panel-heading" data-i18n="map.title">Skill Tree</h2>
     <div class="map-legend">
       <span class="legend-item"><span class="node-dot node-dot-completed" aria-hidden="true"></span> Completed</span>
@@ -92,11 +114,14 @@
     </div>
   </section>
 
-  <section class="panel panel-quest" aria-labelledby="quest-heading">
+  <section class="panel panel-quest" id="panel-quest" role="tabpanel" aria-labelledby="quest-heading">
     <h2 id="quest-heading" class="panel-heading" data-i18n="nav.quest">Quest</h2>
     <div class="quest-empty" id="quest-empty" data-i18n="quest.empty">Choose a glowing node on the Skill Tree to begin your first quest.</div>
 
     <div class="quest-content" id="quest-content" hidden>
+      <button type="button" id="btn-quest-back" class="btn btn-ghost quest-back-btn">
+        <span class="back-arrow" aria-hidden="true">←</span> <span data-i18n="map.title">Skill Tree</span>
+      </button>
       <div class="quest-head">
         <span class="quest-act-badge" id="quest-act-badge"></span>
         <h3 class="quest-title" id="quest-title"></h3>
@@ -105,36 +130,73 @@
 
       <div class="quest-lesson" id="quest-lesson"></div>
 
-      <div class="editor-toolbar">
-        <button type="button" id="btn-run" class="btn btn-primary">
-          <span data-i18n="quest.run">Cast Spell</span> <kbd>Ctrl/Cmd+Enter</kbd>
-        </button>
-        <button type="button" id="btn-reset-code" class="btn btn-ghost" data-i18n="quest.reset">Reset Code</button>
-        <button type="button" id="btn-hint" class="btn btn-ghost"><span data-i18n="quest.hint">Hint</span> <span class="mana-cost">(1 mana)</span></button>
+      <div class="quest-stepper" id="quest-stepper" hidden aria-live="polite">
+        <div class="stepper-head">
+          <h4 class="stepper-step-title" id="stepper-step-title"></h4>
+          <span class="stepper-progress" id="stepper-progress"></span>
+        </div>
+        <div class="stepper-body" id="stepper-body"></div>
+        <div class="stepper-dots" id="stepper-dots" aria-hidden="true"></div>
+        <div class="stepper-nav">
+          <button type="button" class="btn btn-ghost" id="btn-step-back" data-i18n="lesson.back">Back</button>
+          <button type="button" class="btn btn-primary" id="btn-step-continue" data-i18n="lesson.continue">Continue</button>
+        </div>
       </div>
 
-      <div class="editor-wrap">
-        <pre class="editor-highlight" id="editor-highlight" aria-hidden="true"><code id="editor-highlight-code"></code></pre>
-        <textarea
-          class="editor-input"
-          id="editor-input"
-          spellcheck="false"
-          autocomplete="off"
-          autocorrect="off"
-          autocapitalize="off"
-          wrap="off"
-          aria-label="JavaScript code editor"
-        ></textarea>
+      <div class="quest-checkpoint" id="quest-checkpoint" hidden aria-live="polite">
+        <h4 class="checkpoint-title" data-i18n="checkpoint.title">Checkpoint</h4>
+        <p class="checkpoint-prompt" id="checkpoint-prompt"></p>
+        <pre class="checkpoint-code"><code id="checkpoint-code"></code></pre>
+        <div class="checkpoint-choices" id="checkpoint-choices"></div>
+        <div class="checkpoint-feedback" id="checkpoint-feedback" hidden></div>
+        <p class="checkpoint-explain" id="checkpoint-explain" hidden></p>
+        <button type="button" class="btn btn-primary" id="btn-checkpoint-continue" data-i18n="checkpoint.to_task" hidden>To the Task</button>
       </div>
 
-      <div class="hints-panel" id="hints-panel" aria-live="polite"></div>
+      <button type="button" class="btn btn-ghost quest-review-btn" id="btn-review-lesson" data-i18n="lesson.review" hidden>Review the lesson</button>
 
-      <div class="test-results" id="test-results" aria-live="polite"></div>
+      <div class="quest-workspace" id="quest-workspace" hidden>
+        <div class="editor-quickkeys" id="editor-quickkeys" role="group" aria-label="Quick insert">
+          <button type="button" class="qk-btn" data-qk="tab" aria-label="Insert Tab">Tab</button>
+          <button type="button" class="qk-btn" data-qk="braces" aria-label="Insert curly braces">{ }</button>
+          <button type="button" class="qk-btn" data-qk="parens" aria-label="Insert parentheses">( )</button>
+          <button type="button" class="qk-btn" data-qk="semi" aria-label="Insert semicolon">;</button>
+          <button type="button" class="qk-btn" data-qk="equals" aria-label="Insert equals sign">=</button>
+          <button type="button" class="qk-btn" data-qk="quotes" aria-label="Insert quotes">" "</button>
+        </div>
 
-      <div class="victory-panel" id="victory-panel" hidden aria-live="polite">
-        <div class="victory-title" data-i18n="quest.victory">Victory!</div>
-        <div class="victory-xp" id="victory-xp"></div>
-        <button type="button" class="btn btn-primary" id="btn-next-quest" data-i18n="quest.next">Next Quest</button>
+        <div class="editor-wrap">
+          <pre class="editor-highlight" id="editor-highlight" aria-hidden="true"><code id="editor-highlight-code"></code></pre>
+          <textarea
+            class="editor-input"
+            id="editor-input"
+            spellcheck="false"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            wrap="off"
+            aria-label="JavaScript code editor"
+          ></textarea>
+        </div>
+
+        <div class="editor-toolbar">
+          <button type="button" id="btn-run" class="btn btn-primary btn-run">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-label" data-i18n="quest.run">Cast Spell</span> <kbd>Ctrl/Cmd+Enter</kbd>
+          </button>
+          <button type="button" id="btn-reset-code" class="btn btn-ghost" data-i18n="quest.reset">Reset Code</button>
+          <button type="button" id="btn-hint" class="btn btn-ghost"><span data-i18n="quest.hint">Hint</span> <span class="mana-cost">(1 mana)</span></button>
+        </div>
+
+        <div class="hints-panel" id="hints-panel" aria-live="polite"></div>
+
+        <div class="test-results" id="test-results" aria-live="polite"></div>
+
+        <div class="victory-panel" id="victory-panel" hidden aria-live="polite">
+          <div class="victory-title" data-i18n="quest.victory">Victory!</div>
+          <div class="victory-xp" id="victory-xp"></div>
+          <button type="button" class="btn btn-primary" id="btn-next-quest" data-i18n="quest.next">Next Quest</button>
+        </div>
       </div>
     </div>
   </section>

@@ -73,7 +73,8 @@
       lastManaRegenAt: Date.now(),
       achievements: {},
       streak: { count: 0, lastPlayedDate: null },
-      stats: { noHintStreak: 0 }
+      stats: { noHintStreak: 0 },
+      checkpointDone: {}
     };
   }
 
@@ -96,6 +97,7 @@
     state.achievements = parsed.achievements && typeof parsed.achievements === 'object' ? parsed.achievements : {};
     state.streak = Object.assign({ count: 0, lastPlayedDate: null }, parsed.streak || {});
     state.stats = Object.assign({ noHintStreak: 0 }, parsed.stats || {});
+    state.checkpointDone = parsed.checkpointDone && typeof parsed.checkpointDone === 'object' ? parsed.checkpointDone : {};
     return state;
   }
 
@@ -157,6 +159,15 @@
     if (state.completed[quest.id]) return 'completed';
     if (isQuestAvailable(content, quest, state)) return 'available';
     return 'locked';
+  }
+
+  // Marks the lesson intro (steps + checkpoint, or steps alone) as passed for a
+  // quest so reopening it later skips straight to the workspace. Independent
+  // of quest completion -- an in-progress quest can pass this gate too.
+  function markCheckpointDone(state, questId) {
+    state.checkpointDone[questId] = true;
+    save(state);
+    return state;
   }
 
   function canUseHint(state, quest) {
@@ -242,6 +253,7 @@
     questStatus: questStatus,
     canUseHint: canUseHint,
     useHint: useHint,
-    completeQuest: completeQuest
+    completeQuest: completeQuest,
+    markCheckpointDone: markCheckpointDone
   };
 })();

@@ -81,6 +81,17 @@
     });
   }
 
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    // file:// (and anything else without a real origin) can't register a worker.
+    if (location.protocol !== 'https:' && location.protocol !== 'http:') return;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function () {
+        // Best-effort: the game still works fully online without it.
+      });
+    });
+  }
+
   function boot() {
     var content = window.SYNTAXIA_CONTENT;
     if (!content || !Array.isArray(content.acts) || !Array.isArray(content.quests)) {
@@ -91,6 +102,7 @@
     window.SyntaxiaUI.init(mergeExtra(content));
     wireLanguageSelect();
     wireGlossaryButton();
+    registerServiceWorker();
   }
 
   if (document.readyState === 'loading') {

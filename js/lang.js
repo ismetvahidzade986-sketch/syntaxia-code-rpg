@@ -174,15 +174,20 @@
     popover.appendChild(close);
 
     document.body.appendChild(popover);
-    var r = anchor.getBoundingClientRect();
-    var pw = Math.min(360, window.innerWidth - 24);
-    popover.style.maxWidth = pw + 'px';
-    var left = Math.min(r.left, window.innerWidth - pw - 12);
-    var top = r.bottom + 8;
-    var ph = popover.offsetHeight;
-    if (top + ph > window.innerHeight - 12 && r.top - ph - 8 > 0) top = r.top - ph - 8;
-    popover.style.left = Math.max(12, left) + 'px';
-    popover.style.top = Math.max(12, top) + 'px';
+    // Below 700px the popover becomes a fixed bottom sheet (see CSS) -- leave
+    // it entirely to the stylesheet instead of fighting it with inline styles.
+    var isSheet = window.matchMedia('(max-width: 700px)').matches;
+    if (!isSheet) {
+      var r = anchor.getBoundingClientRect();
+      var pw = Math.min(360, window.innerWidth - 24);
+      popover.style.maxWidth = pw + 'px';
+      var left = Math.min(r.left, window.innerWidth - pw - 12);
+      var top = r.bottom + 8;
+      var ph = popover.offsetHeight;
+      if (top + ph > window.innerHeight - 12 && r.top - ph - 8 > 0) top = r.top - ph - 8;
+      popover.style.left = Math.max(12, left) + 'px';
+      popover.style.top = Math.max(12, top) + 'px';
+    }
 
     document.addEventListener('click', onDocClick, true);
     document.addEventListener('keydown', onEsc, true);

@@ -17,6 +17,7 @@
   --fail: #ff7a7a;
   --focus-ring: #c1cbff;
   --radius: 10px;
+  --tabbar-h: 64px;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -47,8 +48,12 @@ button {
 
 .skip-link {
   position: absolute;
-  left: -9999px;
+  left: 0;
   top: 0;
+  /* transform (not a huge negative left/right) so this never registers as
+     horizontal scroll overflow -- a left:-9999px offset does exactly that
+     in RTL layouts, where "off to the left" counts as scrollable content. */
+  transform: translateY(-150%);
   background: var(--accent);
   color: var(--bg);
   padding: 0.5rem 1rem;
@@ -56,12 +61,21 @@ button {
   border-radius: 0 0 var(--radius) 0;
 }
 .skip-link:focus {
-  left: 0;
+  transform: translateY(0);
 }
 
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 /* ---------- starfield ---------- */
@@ -99,6 +113,9 @@ button {
   gap: 1rem;
   flex-wrap: wrap;
   padding: 0.6rem 1rem;
+  padding-top: calc(0.6rem + env(safe-area-inset-top));
+  padding-left: calc(1rem + env(safe-area-inset-left));
+  padding-right: calc(1rem + env(safe-area-inset-right));
   background: rgba(18, 22, 42, 0.85);
   border-bottom: 1px solid var(--border-soft);
   position: sticky;
@@ -186,6 +203,17 @@ button {
   flex-wrap: wrap;
 }
 
+/* Two classes so this reliably outranks the later, equal-specificity
+   `.btn { display: inline-flex }` rule regardless of source order. */
+.menu-toggle.btn {
+  display: none;
+  margin-left: auto;
+}
+.menu-toggle-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 /* ---------- buttons ---------- */
 .btn {
   appearance: none;
@@ -200,6 +228,13 @@ button {
   align-items: center;
   gap: 0.4rem;
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+/* An author `display` (above) beats the UA `[hidden]{display:none}` default
+   unconditionally regardless of specificity -- any .btn toggled via the plain
+   `hidden` property/attribute (btn-review-lesson, btn-checkpoint-continue,
+   any future one) needs this override or it stays visible while "hidden". */
+.btn[hidden] {
+  display: none;
 }
 .btn:hover:not(:disabled) {
   background: var(--bg-elevated-2);
@@ -240,6 +275,28 @@ button {
 .mana-cost {
   color: var(--text-dim);
   font-size: 0.75rem;
+}
+
+.btn-spinner {
+  display: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(11,13,26,0.3);
+  border-top-color: #0b0d1a;
+  flex-shrink: 0;
+}
+.btn-run.is-busy .btn-spinner {
+  display: inline-block;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btn-run.is-busy .btn-spinner { animation: btn-spin 0.7s linear infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-run.is-busy .btn-spinner { opacity: 0.7; }
+}
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ---------- layout ---------- */
@@ -448,8 +505,8 @@ button {
 
 .map-node {
   position: absolute;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   border: 2px solid var(--border);
@@ -461,20 +518,23 @@ button {
   justify-content: center;
   gap: 0.15rem;
   cursor: pointer;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   line-height: 1.15;
-  padding: 2px;
+  padding: 4px;
   text-align: center;
   transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 .map-node .map-node-icon {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
 }
 .map-node .map-node-label {
-  max-width: 58px;
+  max-width: 62px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  word-break: break-word;
 }
 .map-node:hover { transform: translate(-50%, -50%) scale(1.05); }
 
@@ -550,7 +610,8 @@ button {
   margin: 0;
   font-size: 0.9rem;
 }
-.quest-lesson {
+.quest-lesson,
+.stepper-body {
   background: rgba(8,10,20,0.4);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
@@ -559,9 +620,9 @@ button {
   font-size: 0.9rem;
   line-height: 1.55;
 }
-.quest-lesson p { margin: 0 0 0.6rem; }
-.quest-lesson p:last-child { margin-bottom: 0; }
-.quest-lesson pre {
+.quest-lesson p, .stepper-body p { margin: 0 0 0.6rem; }
+.quest-lesson p:last-child, .stepper-body p:last-child { margin-bottom: 0; }
+.quest-lesson pre, .stepper-body pre {
   background: rgba(0,0,0,0.35);
   border: 1px solid var(--border-soft);
   border-radius: 6px;
@@ -571,21 +632,148 @@ button {
   font-family: var(--font-mono);
   font-size: 0.82rem;
 }
-.quest-lesson code {
+.quest-lesson code, .stepper-body code {
   font-family: var(--font-mono);
   background: rgba(143,163,255,0.12);
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
   font-size: 0.88em;
 }
-.quest-lesson pre code {
+.quest-lesson pre code, .stepper-body pre code {
   background: none;
   padding: 0;
 }
-.quest-lesson ul, .quest-lesson ol {
+.quest-lesson ul, .quest-lesson ol, .stepper-body ul, .stepper-body ol {
   margin: 0.4rem 0 0.6rem;
   padding-left: 1.3rem;
 }
+
+/* ---------- lesson stepper ---------- */
+.quest-stepper {
+  margin-bottom: 1rem;
+}
+.stepper-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.stepper-step-title {
+  font-size: 1.05rem;
+  margin: 0;
+}
+.stepper-progress {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.stepper-body { margin-bottom: 0.6rem; }
+.stepper-dots {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+}
+.stepper-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.stepper-dot.done { background: var(--success); }
+.stepper-dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(143,163,255,0.8);
+}
+.stepper-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* ---------- checkpoint ---------- */
+.quest-checkpoint {
+  background: rgba(143,163,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.checkpoint-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-strong);
+}
+.checkpoint-prompt {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+}
+.checkpoint-code {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  margin: 0 0 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+.checkpoint-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.checkpoint-choice {
+  appearance: none;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  min-height: 44px;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+[dir="rtl"] .checkpoint-choice { text-align: right; }
+.checkpoint-choice:hover:not([aria-disabled]) {
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+}
+.checkpoint-choice[aria-disabled] { cursor: default; }
+.checkpoint-choice.is-correct {
+  border-color: var(--success);
+  background: rgba(88,230,166,0.12);
+}
+.checkpoint-choice.is-incorrect {
+  border-color: var(--fail);
+  background: rgba(255,122,122,0.12);
+}
+.checkpoint-feedback {
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+.checkpoint-feedback.is-correct { color: var(--success); }
+.checkpoint-feedback.is-incorrect { color: var(--fail); }
+.checkpoint-explain {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0 0 0.85rem;
+}
+
+.quest-review-btn {
+  margin-bottom: 1rem;
+}
+
+.quest-workspace { min-width: 0; }
 
 .editor-toolbar {
   display: flex;
@@ -605,6 +793,39 @@ button {
   font-size: 0.88rem;
   line-height: 1.5;
 }
+.editor-wrap:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.editor-quickkeys {
+  display: none;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  overflow-x: auto;
+}
+.qk-btn {
+  appearance: none;
+  flex: 0 0 auto;
+  min-width: 2.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+.qk-btn:hover { background: var(--bg-elevated-2); border-color: var(--accent); }
+.qk-btn:active { transform: translateY(1px); }
+
+.quest-back-btn {
+  display: none;
+  margin-bottom: 0.75rem;
+}
+.quest-back-btn .back-arrow { display: inline-block; }
+[dir="rtl"] .quest-back-btn .back-arrow { transform: scaleX(-1); }
 .editor-highlight,
 .editor-input {
   position: absolute;
@@ -662,14 +883,28 @@ button {
   flex-direction: column;
   gap: 0.4rem;
 }
+/* An ordered list so results read as "1., 2., 3." -- lined up with the
+   lesson's own numbered "Your Task" sub-goals. */
+.test-checklist {
+  list-style: decimal;
+  margin: 0;
+  padding-left: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+[dir="rtl"] .test-checklist {
+  padding-left: 0;
+  padding-right: 1.5rem;
+}
 .test-result {
+  /* No `display` override here on purpose: this is an <li>, and only an
+     element that keeps the UA default `display: list-item` actually renders
+     the ordered-list marker (1., 2., 3. ...) -- `flex`/`block` suppress it. */
   border: 1px solid var(--border-soft);
   border-radius: 8px;
   padding: 0.5rem 0.7rem;
   font-size: 0.85rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
 }
 .test-result.pass {
   border-color: rgba(88,230,166,0.4);
@@ -683,6 +918,7 @@ button {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  margin-bottom: 0.2rem;
 }
 .test-result-icon.pass { color: var(--success); }
 .test-result-icon.fail { color: var(--fail); }
@@ -691,6 +927,26 @@ button {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   word-break: break-word;
+  margin-top: 0.2rem;
+}
+.test-coach-note {
+  margin-top: 0.3rem;
+  padding: 0.5rem 0.65rem;
+  background: rgba(143,163,255,0.1);
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+.coach-label {
+  color: var(--accent-strong);
+}
+.test-coach-note code {
+  font-family: var(--font-mono);
+  background: rgba(255,255,255,0.08);
+  padding: 0 0.25rem;
+  border-radius: 3px;
 }
 .test-summary {
   font-size: 0.85rem;
@@ -708,20 +964,30 @@ button {
 .victory-panel {
   margin-top: 1rem;
   border: 1px solid var(--gold);
-  background: rgba(244,207,94,0.08);
-  border-radius: var(--radius);
-  padding: 1rem;
+  background: linear-gradient(180deg, rgba(244,207,94,0.12), rgba(244,207,94,0.05));
+  border-radius: calc(var(--radius) + 2px);
+  padding: 1.1rem 1rem;
   text-align: center;
+  box-shadow: 0 0 24px rgba(244,207,94,0.18);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .victory-panel { animation: victory-in 0.35s ease; }
+}
+@keyframes victory-in {
+  from { transform: translateY(6px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
 }
 .victory-title {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   color: var(--gold);
   font-weight: 700;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.35rem;
+  text-shadow: 0 0 12px rgba(244,207,94,0.5);
 }
 .victory-xp {
   color: var(--text-dim);
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.95rem;
 }
 
 /* ---------- modal ---------- */
@@ -819,40 +1085,234 @@ button {
 /* ---------- toasts ---------- */
 .toast-root {
   position: fixed;
-  bottom: 1rem;
-  right: 1rem;
+  top: calc(1rem + env(safe-area-inset-top));
+  right: calc(1rem + env(safe-area-inset-right));
+  bottom: auto;
+  left: auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   z-index: 400;
   max-width: 320px;
+  pointer-events: none;
 }
 .toast {
+  position: relative;
+  overflow: hidden;
   background: var(--bg-elevated);
   border: 1px solid var(--gold);
   border-radius: 8px;
-  padding: 0.6rem 0.85rem;
+  padding: 0.6rem 0.85rem 0.75rem;
   font-size: 0.82rem;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  pointer-events: auto;
+}
+.toast::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--gold);
+  opacity: 0.7;
+  animation: toast-progress 4.5s linear forwards;
 }
 @media (prefers-reduced-motion: no-preference) {
   .toast { animation: toast-in 0.25s ease; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .toast::after { animation: none; width: 0; }
+}
 @keyframes toast-in {
-  from { transform: translateY(8px); opacity: 0; }
+  from { transform: translateY(-8px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+@keyframes toast-progress {
+  from { width: 100%; }
+  to { width: 0%; }
 }
 .toast.toast-info {
   border-color: var(--border);
 }
-
-/* ---------- responsive tweaks ---------- */
-@media (max-width: 859px) {
-  .topbar-menu { order: 3; width: 100%; justify-content: flex-end; }
+.toast.toast-info::after {
+  background: var(--accent);
 }
+
+/* ---------- tab bar (mobile app shell) ---------- */
+.tabbar {
+  display: none;
+}
+
+/* ---------- mobile app shell (<=859px): bottom tabs, one panel at a time ---------- */
+@media (max-width: 859px) {
+  html, body { height: 100%; }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .app-main {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+    padding: 0.75rem;
+    padding-bottom: calc(0.75rem + var(--tabbar-h) + env(safe-area-inset-bottom));
+  }
+  .panel {
+    display: none;
+    height: 100%;
+    margin: 0;
+    overflow-y: auto;
+  }
+  body[data-active-tab="character"] .panel-character,
+  body[data-active-tab="map"] .panel-map,
+  body[data-active-tab="quest"] .panel-quest {
+    display: flex;
+  }
+
+  /* ---- compact single-row header ---- */
+  .topbar { flex-wrap: nowrap; gap: 0.5rem; padding-top: calc(0.5rem + env(safe-area-inset-top)); padding-bottom: 0.5rem; }
+  .brand-name { font-size: 0.95rem; }
+  .brand-logo { width: 26px; height: 26px; }
+  .topbar-status { gap: 0.5rem; flex: 1 1 auto; min-width: 0; }
+  .level-chip { padding: 0.15rem 0.4rem; }
+  .xp-text { display: none; } /* full XP readout still lives in the Character tab */
+
+  /* ---- menu: hamburger toggle + dropdown sheet ---- */
+  .menu-toggle.btn { display: inline-flex; }
+  .topbar-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: calc(0.5rem + env(safe-area-inset-right));
+    margin-top: 0.4rem;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+    min-width: 210px;
+    z-index: 60;
+  }
+  [dir="rtl"] .topbar-menu { right: auto; left: calc(0.5rem + env(safe-area-inset-left)); }
+  .topbar-menu.menu-open { display: flex; }
+  .topbar-menu .btn { justify-content: flex-start; width: 100%; }
+  .topbar-menu .lang-select { margin-top: 0.25rem; width: 100%; }
+
+  /* ---- bottom tab bar ---- */
+  .tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 55;
+    background: rgba(18, 22, 42, 0.94);
+    backdrop-filter: blur(6px);
+    border-top: 1px solid var(--border-soft);
+    padding: 0.3rem calc(0.4rem + env(safe-area-inset-left)) calc(0.3rem + env(safe-area-inset-bottom)) calc(0.4rem + env(safe-area-inset-right));
+  }
+  .tabbar-btn {
+    flex: 1 1 0;
+    appearance: none;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    padding: 0.3rem 0.2rem;
+    min-height: 48px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .tabbar-btn:hover { background: rgba(255,255,255,0.05); }
+  .tabbar-icon { font-size: 1.25rem; line-height: 1; }
+  .tabbar-label { font-size: 0.65rem; }
+  .tabbar-btn[aria-selected="true"] { color: var(--accent-strong); }
+  .tabbar-btn[aria-selected="true"] .tabbar-icon {
+    filter: drop-shadow(0 0 6px rgba(143,163,255,0.7));
+  }
+
+  /* ---- back-to-map affordance inside the quest panel ---- */
+  .quest-back-btn { display: inline-flex; }
+
+  /* ---- run button: full-width and thumb-reachable right under the editor ---- */
+  .editor-toolbar { flex-wrap: wrap; }
+  .editor-toolbar .btn-run {
+    flex: 1 1 100%;
+    order: -1;
+    justify-content: center;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    font-size: 0.95rem;
+  }
+  .editor-toolbar #btn-reset-code,
+  .editor-toolbar #btn-hint {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  /* ---- achievements: horizontal shelf instead of a big grid ---- */
+  .achievements-grid {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 0.3rem;
+    scroll-snap-type: x proximity;
+  }
+  .achievement-badge {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  /* ---- toasts float above the tab bar, not over it ---- */
+  .toast-root {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 0.6rem);
+    align-items: center;
+    max-width: none;
+    padding: 0 0.75rem;
+  }
+  .toast { width: 100%; max-width: 420px; }
+}
+
 @media (max-width: 480px) {
   .editor-wrap { height: 220px; }
   .char-avatar-row { flex-wrap: wrap; }
+}
+
+/* ---------- coarse-pointer (touch) sizing ---------- */
+@media (pointer: coarse) {
+  .btn, .lang-select, .qk-btn, .gloss-term, .gloss-list-item, .gloss-pop-close {
+    min-height: 44px;
+  }
+  .btn, .lang-select { padding-top: 0.65rem; padding-bottom: 0.65rem; }
+  .gloss-term { padding: 0.35rem 0.15rem; }
+  .menu-toggle { min-width: 44px; }
+  .tabbar-btn { min-height: 52px; }
+
+  /* the physical keyboard hint is meaningless on a touch device */
+  .btn kbd { display: none; }
+
+  /* a slim insert-at-caret toolbar stands in for keys mobile keyboards don't have */
+  .editor-quickkeys { display: flex; }
+
+  /* 16px prevents iOS Safari from zooming the page on focus; keep both layers in sync */
+  .editor-highlight, .editor-input {
+    font-size: 16px;
+    line-height: 1.5;
+  }
 }
 
 /* ---------- language layer ---------- */
@@ -894,7 +1354,9 @@ pre, code, .gloss-pop-term { direction: ltr; text-align: left; }
 
 .gloss-popover {
   position: fixed;
-  z-index: 90;
+  /* Above .modal-overlay (200): a term tapped from inside the searchable
+     glossary modal must still be reachable/closeable, not trapped behind it. */
+  z-index: 210;
   background: #101430;
   border: 1px solid rgba(111, 227, 166, 0.45);
   border-radius: 12px;
@@ -976,5 +1438,17 @@ pre, code, .gloss-pop-term { direction: ltr; text-align: left; }
 .gloss-list-short { font-size: 0.82rem; opacity: 0.8; }
 
 @media (max-width: 700px) {
-  .gloss-popover { max-width: calc(100vw - 24px); }
+  .gloss-popover {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 60vh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
 }

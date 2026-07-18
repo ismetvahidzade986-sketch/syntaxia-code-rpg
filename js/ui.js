@@ -24,12 +24,20 @@
       'char-streak-text', 'achievements-grid',
       'map-scroll', 'map-canvas', 'map-lines', 'map-nodes',
       'quest-empty', 'quest-content', 'quest-act-badge', 'quest-title', 'quest-concept', 'quest-lesson',
-      'btn-run', 'btn-reset-code', 'btn-hint',
-      'editor-highlight', 'editor-highlight-code', 'editor-input',
+      'quest-stepper', 'stepper-step-title', 'stepper-progress', 'stepper-body', 'stepper-dots',
+      'btn-step-back', 'btn-step-continue',
+      'quest-checkpoint', 'checkpoint-prompt', 'checkpoint-code', 'checkpoint-choices',
+      'checkpoint-feedback', 'checkpoint-explain', 'btn-checkpoint-continue',
+      'btn-review-lesson', 'quest-workspace',
+      'btn-run', 'btn-reset-code', 'btn-hint', 'btn-quest-back',
+      'editor-highlight', 'editor-highlight-code', 'editor-input', 'editor-quickkeys',
       'hints-panel', 'test-results', 'victory-panel', 'victory-xp', 'btn-next-quest',
       'modal-overlay', 'modal', 'modal-close', 'modal-title', 'modal-body',
       'levelup-overlay', 'levelup-level', 'levelup-title',
-      'toast-root'
+      'toast-root',
+      'btn-menu-toggle', 'topbar-menu',
+      'tabbar', 'tab-btn-character', 'tab-btn-map', 'tab-btn-quest',
+      'panel-character', 'panel-map', 'panel-quest'
     ];
     ids.forEach(function (id) {
       dom[toCamel(id)] = document.getElementById(id);
@@ -291,6 +299,269 @@
     openQuest(quest.id);
   }
 
+  /* ---------- mobile tab bar + header menu sheet ---------- */
+  /* Below 860px CSS turns the 3-panel layout into one-panel-at-a-time; above
+     that the [data-active-tab] attribute and aria-selected states are inert. */
+
+  var TAB_NAMES = ['character', 'map', 'quest'];
+
+  function tabButton(name) {
+    return dom['tabBtn' + name.charAt(0).toUpperCase() + name.slice(1)];
+  }
+
+  function activateTab(name) {
+    if (TAB_NAMES.indexOf(name) === -1) return;
+    document.body.setAttribute('data-active-tab', name);
+    TAB_NAMES.forEach(function (n) {
+      var btn = tabButton(n);
+      if (!btn) return;
+      var active = n === name;
+      btn.setAttribute('aria-selected', String(active));
+      btn.tabIndex = active ? 0 : -1;
+    });
+    var panel = dom['panel' + name.charAt(0).toUpperCase() + name.slice(1)];
+    if (panel) panel.scrollTop = 0;
+  }
+
+  function wireTabBar() {
+    if (!dom.tabbar) return;
+    var buttons = TAB_NAMES.map(tabButton);
+    buttons.forEach(function (btn, i) {
+      if (!btn) return;
+      btn.addEventListener('click', function () { activateTab(TAB_NAMES[i]); });
+      btn.addEventListener('keydown', function (e) {
+        var isRtl = document.documentElement.dir === 'rtl';
+        var n = buttons.length;
+        var next = null;
+        if (e.key === 'ArrowRight') next = isRtl ? (i - 1 + n) % n : (i + 1) % n;
+        else if (e.key === 'ArrowLeft') next = isRtl ? (i + 1) % n : (i - 1 + n) % n;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = n - 1;
+        else return;
+        e.preventDefault();
+        buttons[next].focus();
+        activateTab(TAB_NAMES[next]);
+      });
+    });
+  }
+
+  function wireMenuToggle() {
+    var toggle = dom.btnMenuToggle;
+    var menu = dom.topbarMenu;
+    if (!toggle || !menu) return;
+
+    function isOpen() { return menu.classList.contains('menu-open'); }
+    function close() {
+      menu.classList.remove('menu-open');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+    function open() {
+      menu.classList.add('menu-open');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+
+    toggle.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (isOpen()) close(); else open();
+    });
+    document.addEventListener('click', function (e) {
+      if (isOpen() && !menu.contains(e.target) && e.target !== toggle) close();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && isOpen()) { close(); toggle.focus(); }
+    });
+    // Menu actions open a modal (which covers the screen) or navigate away
+    // (language change); either way the sheet itself should collapse first.
+    Array.prototype.forEach.call(menu.querySelectorAll('.btn'), function (btn) {
+      btn.addEventListener('click', close);
+    });
+  }
+
+  /* ---------- lesson stepper + checkpoint gate ---------- */
+  /* Quests authored with `steps` teach in cards (idea -> demo -> trap -> task)
+     before a predict-the-output `checkpoint` unlocks the editor/results
+     workspace. Quests without `steps` fall back to the original single-blob
+     lesson with the workspace open immediately, unchanged. Already-completed
+     quests, or quests already passed once (state.checkpointDone), also open
+     with the workspace immediately -- the stepper collapses behind a
+     reopenable "Review the lesson" button instead of gating anything. */
+
+  var stepperState = null; // { quest, index, mode: 'gate' | 'review' }
+
+  function hasSteps(q) { return Array.isArray(q.steps) && q.steps.length > 0; }
+  function hasCheckpoint(q) { return !!q.checkpoint; }
+
+  function setWorkspaceVisible(visible) {
+    dom.questWorkspace.hidden = !visible;
+  }
+
+  function focusEditorIfNotTouch() {
+    // Popping the on-screen keyboard right after a panel/step transition lets
+    // the browser's "scroll input into view" fight that transition -- see the
+    // matching note in openQuest().
+    if (!window.matchMedia('(pointer: coarse)').matches) dom.editorInput.focus();
+  }
+
+  function passGate(questId) {
+    dom.questStepper.hidden = true;
+    dom.questCheckpoint.hidden = true;
+    dom.btnReviewLesson.hidden = false;
+    setWorkspaceVisible(true);
+    state = Engine.markCheckpointDone(state, questId);
+    focusEditorIfNotTouch();
+  }
+
+  function renderStep() {
+    var st = stepperState;
+    if (!st) return;
+    var steps = st.quest.steps;
+    var step = steps[st.index];
+    var lang = window.SyntaxiaLang;
+
+    dom.stepperStepTitle.textContent = step.title;
+    var progressTpl = lang ? lang.t('lesson.step_progress', '{n} / {total}') : '{n} / {total}';
+    dom.stepperProgress.textContent = progressTpl
+      .replace('{n}', String(st.index + 1))
+      .replace('{total}', String(steps.length));
+
+    dom.stepperBody.textContent = '';
+    dom.stepperBody.appendChild(sanitizeLessonHtml(step.body));
+    if (lang) lang.decorateGlossary(dom.stepperBody);
+
+    dom.stepperDots.innerHTML = '';
+    steps.forEach(function (s, i) {
+      var dot = document.createElement('span');
+      dot.className = 'stepper-dot' + (i === st.index ? ' active' : '') + (i < st.index ? ' done' : '');
+      dom.stepperDots.appendChild(dot);
+    });
+
+    dom.btnStepBack.disabled = st.index === 0;
+  }
+
+  function onStepBack() {
+    var st = stepperState;
+    if (!st || st.index === 0) return;
+    st.index--;
+    renderStep();
+  }
+
+  function onStepContinue() {
+    var st = stepperState;
+    if (!st) return;
+    var steps = st.quest.steps;
+    if (st.index < steps.length - 1) {
+      st.index++;
+      renderStep();
+      dom.questStepper.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    // Last step.
+    if (st.mode === 'review') {
+      dom.questStepper.hidden = true; // just collapse back behind the review button
+      return;
+    }
+    if (hasCheckpoint(st.quest)) {
+      dom.questStepper.hidden = true;
+      dom.questCheckpoint.hidden = false;
+      renderCheckpoint(st.quest);
+    } else {
+      passGate(st.quest.id);
+    }
+  }
+
+  function renderCheckpoint(quest) {
+    var cp = quest.checkpoint;
+    var lang = window.SyntaxiaLang;
+
+    dom.checkpointPrompt.textContent = cp.prompt;
+    dom.checkpointCode.innerHTML = Util.highlight(cp.code);
+    dom.checkpointFeedback.hidden = true;
+    dom.checkpointFeedback.textContent = '';
+    dom.checkpointFeedback.className = 'checkpoint-feedback';
+    dom.checkpointExplain.hidden = true;
+    dom.checkpointExplain.textContent = '';
+    dom.btnCheckpointContinue.hidden = true;
+    dom.checkpointChoices.innerHTML = '';
+
+    var answered = false;
+    cp.choices.forEach(function (choice, i) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'checkpoint-choice';
+      btn.textContent = choice;
+      btn.addEventListener('click', function () {
+        if (answered) return;
+        answered = true;
+        var correct = i === cp.answer;
+        Array.prototype.forEach.call(dom.checkpointChoices.children, function (b, idx) {
+          if (idx === cp.answer) b.classList.add('is-correct');
+          else if (idx === i) b.classList.add('is-incorrect');
+          b.setAttribute('aria-disabled', 'true');
+        });
+        dom.checkpointFeedback.hidden = false;
+        dom.checkpointFeedback.textContent = correct
+          ? (lang ? lang.t('checkpoint.correct', 'Correct!') : 'Correct!')
+          : (lang ? lang.t('checkpoint.incorrect', 'Not quite.') : 'Not quite.');
+        dom.checkpointFeedback.className = 'checkpoint-feedback ' + (correct ? 'is-correct' : 'is-incorrect');
+        // Always shown -- refutation-style teaching, regardless of whether the
+        // pick was right, per the checkpoint's own design.
+        dom.checkpointExplain.hidden = false;
+        dom.checkpointExplain.textContent = cp.explain;
+        dom.btnCheckpointContinue.hidden = false;
+        dom.btnCheckpointContinue.focus();
+      });
+      dom.checkpointChoices.appendChild(btn);
+    });
+  }
+
+  function wireReviewToggle() {
+    if (!dom.btnReviewLesson) return;
+    dom.btnReviewLesson.addEventListener('click', function () {
+      if (!stepperState) return;
+      var opening = dom.questStepper.hidden;
+      if (opening) {
+        stepperState.index = 0;
+        stepperState.mode = 'review';
+        dom.questStepper.hidden = false;
+        renderStep();
+      } else {
+        dom.questStepper.hidden = true;
+      }
+    });
+  }
+
+  function setupLessonFlow(q, alreadyPassedGate) {
+    // Reset every time -- avoids visibility state leaking between quests.
+    dom.questCheckpoint.hidden = true;
+    dom.btnReviewLesson.hidden = true;
+
+    if (!hasSteps(q)) {
+      dom.questStepper.hidden = true;
+      dom.questLesson.hidden = false;
+      dom.questLesson.textContent = '';
+      dom.questLesson.appendChild(sanitizeLessonHtml(q.lesson));
+      if (window.SyntaxiaLang) window.SyntaxiaLang.decorateGlossary(dom.questLesson);
+      stepperState = null;
+      setWorkspaceVisible(true);
+      return;
+    }
+
+    dom.questLesson.hidden = true;
+    dom.questLesson.textContent = '';
+
+    if (alreadyPassedGate) {
+      stepperState = { quest: q, index: 0, mode: 'review' };
+      dom.questStepper.hidden = true;
+      dom.btnReviewLesson.hidden = false;
+      setWorkspaceVisible(true);
+    } else {
+      stepperState = { quest: q, index: 0, mode: 'gate' };
+      dom.questStepper.hidden = false;
+      setWorkspaceVisible(false);
+      renderStep();
+    }
+  }
+
   /* ---------- quest panel ---------- */
 
   function openQuest(id) {
@@ -304,9 +575,6 @@
     dom.questActBadge.textContent = 'Act ' + q.act + ' — ' + actName(q.act);
     dom.questTitle.textContent = q.title;
     dom.questConcept.textContent = q.concept;
-    dom.questLesson.textContent = '';
-    dom.questLesson.appendChild(sanitizeLessonHtml(q.lesson));
-    if (window.SyntaxiaLang) window.SyntaxiaLang.decorateGlossary(dom.questLesson);
 
     dom.editorInput.value = q.starter;
     refreshHighlight();
@@ -316,7 +584,17 @@
     renderRevealedHints(q);
     updateHintButton();
     renderMap();
-    dom.editorInput.focus();
+    activateTab('quest');
+
+    var alreadyPassedGate = !!(state.completed[id] || state.checkpointDone[id]);
+    setupLessonFlow(q, alreadyPassedGate);
+
+    // Skip the auto-focus on touch devices: it would pop the on-screen keyboard
+    // and let the browser's "scroll input into view" fight the tab switch we
+    // just did, re-creating the exact cut-off-heading bug this shell fixes.
+    // Also skip it entirely while the checkpoint gate is up -- there is no
+    // editor to focus yet, and focus should stay with the stepper/checkpoint.
+    if (alreadyPassedGate || !hasSteps(q)) focusEditorIfNotTouch();
   }
 
   function renderRevealedHints(quest) {
@@ -362,6 +640,76 @@
     return { lineStart: lineStart, line: value.slice(lineStart, pos) };
   }
 
+  // Shared by the real Tab key and the mobile quick-key toolbar's Tab button,
+  // so both indent identically whether the input came from a keyboard or a tap.
+  function applyTabIndent(shiftKey) {
+    var el = dom.editorInput;
+    var start = el.selectionStart, end = el.selectionEnd, value = el.value;
+    if (shiftKey) {
+      var lineStart = currentLineInfo(value, start).lineStart;
+      var selected = value.slice(lineStart, end);
+      var removedFirstLine = 0;
+      var lines = selected.split('\n').map(function (line, idx) {
+        var m = line.match(/^ {1,2}/);
+        var removed = m ? m[0].length : 0;
+        if (idx === 0) removedFirstLine = removed;
+        return line.slice(removed);
+      });
+      var newSelected = lines.join('\n');
+      el.value = value.slice(0, lineStart) + newSelected + value.slice(end);
+      el.selectionStart = Math.max(lineStart, start - removedFirstLine);
+      el.selectionEnd = lineStart + newSelected.length;
+    } else if (start === end) {
+      el.value = value.slice(0, start) + '  ' + value.slice(end);
+      el.selectionStart = el.selectionEnd = start + 2;
+    } else {
+      var lineStart2 = currentLineInfo(value, start).lineStart;
+      var selected2 = value.slice(lineStart2, end);
+      var newSelected2 = selected2.split('\n').map(function (line) { return '  ' + line; }).join('\n');
+      el.value = value.slice(0, lineStart2) + newSelected2 + value.slice(end);
+      el.selectionStart = start + 2;
+      el.selectionEnd = lineStart2 + newSelected2.length;
+    }
+    refreshHighlight();
+  }
+
+  // Inserts text at the caret (replacing any selection) and re-focuses the
+  // editor -- used by the mobile quick-key toolbar buttons.
+  function insertAtCaret(text, cursorOffset) {
+    var el = dom.editorInput;
+    var start = el.selectionStart, end = el.selectionEnd, value = el.value;
+    el.value = value.slice(0, start) + text + value.slice(end);
+    var newPos = start + (cursorOffset != null ? cursorOffset : text.length);
+    el.selectionStart = el.selectionEnd = newPos;
+    refreshHighlight();
+    el.focus();
+  }
+
+  var QUICK_KEYS = {
+    tab: null, // handled specially -- reuses applyTabIndent
+    braces: { insert: '{}', cursorOffset: 1 },
+    parens: { insert: '()', cursorOffset: 1 },
+    semi: { insert: ';' },
+    equals: { insert: ' = ' },
+    quotes: { insert: '""', cursorOffset: 1 }
+  };
+
+  function wireEditorQuickKeys() {
+    if (!dom.editorQuickkeys) return;
+    var buttons = dom.editorQuickkeys.querySelectorAll('.qk-btn');
+    Array.prototype.forEach.call(buttons, function (btn) {
+      // Prevent the textarea from ever blurring, so selectionStart/End (and
+      // thus the caret position) survive the tap through to the click handler.
+      btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      btn.addEventListener('click', function () {
+        var kind = btn.getAttribute('data-qk');
+        if (kind === 'tab') { applyTabIndent(false); dom.editorInput.focus(); return; }
+        var spec = QUICK_KEYS[kind];
+        if (spec) insertAtCaret(spec.insert, spec.cursorOffset);
+      });
+    });
+  }
+
   function onEditorKeydown(e) {
     var el = dom.editorInput;
 
@@ -373,33 +721,7 @@
 
     if (e.key === 'Tab') {
       e.preventDefault();
-      var start = el.selectionStart, end = el.selectionEnd, value = el.value;
-      if (e.shiftKey) {
-        var lineStart = currentLineInfo(value, start).lineStart;
-        var selected = value.slice(lineStart, end);
-        var removedFirstLine = 0;
-        var lines = selected.split('\n').map(function (line, idx) {
-          var m = line.match(/^ {1,2}/);
-          var removed = m ? m[0].length : 0;
-          if (idx === 0) removedFirstLine = removed;
-          return line.slice(removed);
-        });
-        var newSelected = lines.join('\n');
-        el.value = value.slice(0, lineStart) + newSelected + value.slice(end);
-        el.selectionStart = Math.max(lineStart, start - removedFirstLine);
-        el.selectionEnd = lineStart + newSelected.length;
-      } else if (start === end) {
-        el.value = value.slice(0, start) + '  ' + value.slice(end);
-        el.selectionStart = el.selectionEnd = start + 2;
-      } else {
-        var lineStart2 = currentLineInfo(value, start).lineStart;
-        var selected2 = value.slice(lineStart2, end);
-        var newSelected2 = selected2.split('\n').map(function (line) { return '  ' + line; }).join('\n');
-        el.value = value.slice(0, lineStart2) + newSelected2 + value.slice(end);
-        el.selectionStart = start + 2;
-        el.selectionEnd = lineStart2 + newSelected2.length;
-      }
-      refreshHighlight();
+      applyTabIndent(e.shiftKey);
       return;
     }
 
@@ -420,11 +742,17 @@
 
   /* ---------- running code ---------- */
 
+  function setRunButtonBusy(busy) {
+    dom.btnRun.disabled = busy;
+    dom.btnRun.classList.toggle('is-busy', busy);
+    dom.btnRun.setAttribute('aria-busy', String(busy));
+  }
+
   function onRun() {
     var q = questsById[currentQuestId];
     if (!q || runInFlight) return;
     runInFlight = true;
-    dom.btnRun.disabled = true;
+    setRunButtonBusy(true);
 
     var meta = questRunMeta[q.id] || (questRunMeta[q.id] = { firstRunAt: null });
     if (!meta.firstRunAt) meta.firstRunAt = Date.now();
@@ -433,7 +761,7 @@
     dom.testResults.innerHTML = '';
     var running = document.createElement('div');
     running.className = 'test-summary';
-    running.textContent = 'Casting...';
+    running.textContent = window.SyntaxiaLang ? window.SyntaxiaLang.t('quest.casting', 'Casting...') : 'Casting...';
     dom.testResults.appendChild(running);
 
     Runner.runCode({
@@ -443,7 +771,7 @@
       tests: q.tests
     }).then(function (result) {
       runInFlight = false;
-      dom.btnRun.disabled = false;
+      setRunButtonBusy(false);
       renderResults(q, result);
     });
   }
@@ -462,9 +790,15 @@
     }
 
     var results = result.results || [];
-    results.forEach(function (r) {
-      var row = document.createElement('div');
-      row.className = 'test-result ' + (r.pass ? 'pass' : 'fail');
+    // Rendered as an ordered checklist (1., 2., 3. ...) so it lines up with a
+    // task's numbered sub-goals in the lesson's "Your Task" step.
+    var list = document.createElement('ol');
+    list.className = 'test-checklist';
+    var coachShown = false;
+
+    results.forEach(function (r, i) {
+      var li = document.createElement('li');
+      li.className = 'test-result ' + (r.pass ? 'pass' : 'fail');
 
       var head = document.createElement('div');
       head.className = 'test-result-head';
@@ -476,7 +810,7 @@
       desc.innerHTML = renderInlineCode(r.desc);
       head.appendChild(icon);
       head.appendChild(desc);
-      row.appendChild(head);
+      li.appendChild(head);
 
       if (!r.pass) {
         var detail = document.createElement('div');
@@ -492,10 +826,31 @@
           msg = 'This check did not pass.';
         }
         detail.innerHTML = renderInlineCode(msg);
-        row.appendChild(detail);
+        li.appendChild(detail);
+
+        // Only the FIRST failing test gets a coach note -- dumping every
+        // `teach` string at once defeats the point of teaching one thing at a
+        // time. quest.tests[i] lines up 1:1 with results[i] (see runner.js).
+        var teach = quest.tests && quest.tests[i] && quest.tests[i].teach;
+        if (!coachShown && teach) {
+          coachShown = true;
+          var lang = window.SyntaxiaLang;
+          var coach = document.createElement('div');
+          coach.className = 'test-coach-note';
+          var label = document.createElement('strong');
+          label.className = 'coach-label';
+          label.textContent = '🧙 ' + (lang ? lang.t('results.coach_label', 'Coach') : 'Coach') + ':';
+          var body = document.createElement('span');
+          body.innerHTML = renderInlineCode(teach);
+          coach.appendChild(label);
+          coach.appendChild(document.createTextNode(' '));
+          coach.appendChild(body);
+          li.appendChild(coach);
+        }
       }
-      dom.testResults.appendChild(row);
+      list.appendChild(li);
     });
+    dom.testResults.appendChild(list);
 
     var passCount = results.filter(function (r) { return r.pass; }).length;
     var summary = document.createElement('div');
@@ -664,6 +1019,7 @@
       state = Engine.resetProgress();
       currentQuestId = null;
       questRunMeta = {};
+      stepperState = null;
       dom.questEmpty.hidden = false;
       dom.questContent.hidden = true;
       renderHUD();
@@ -693,6 +1049,7 @@
     dom.editorInput.addEventListener('keydown', onEditorKeydown);
     dom.editorInput.addEventListener('input', refreshHighlight);
     dom.editorInput.addEventListener('scroll', syncScroll);
+    wireEditorQuickKeys();
 
     dom.btnAbout.addEventListener('click', function () { openModal('About Syntaxia', buildAboutModal()); });
     dom.btnShortcuts.addEventListener('click', function () { openModal('Keyboard Shortcuts', buildShortcutsModal()); });
@@ -702,6 +1059,23 @@
       if (e.target === dom.modalOverlay) closeModal();
     });
     dom.levelupOverlay.addEventListener('click', hideLevelUp);
+
+    wireTabBar();
+    wireMenuToggle();
+    if (dom.btnQuestBack) {
+      dom.btnQuestBack.addEventListener('click', function () {
+        activateTab('map');
+        var mapTab = tabButton('map');
+        if (mapTab) mapTab.focus();
+      });
+    }
+
+    dom.btnStepBack.addEventListener('click', onStepBack);
+    dom.btnStepContinue.addEventListener('click', onStepContinue);
+    dom.btnCheckpointContinue.addEventListener('click', function () {
+      if (stepperState) passGate(stepperState.quest.id);
+    });
+    wireReviewToggle();
 
     window.addEventListener('resize', renderMap);
   }
@@ -720,6 +1094,7 @@
     Engine.save(state);
 
     wireEvents();
+    activateTab('character');
     renderHUD();
     renderCharacter();
     renderMap();
